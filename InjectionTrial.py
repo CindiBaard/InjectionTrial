@@ -22,12 +22,28 @@ def get_project_data(pre_prod_no):
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         search_term = str(pre_prod_no).strip()
         
-        # The exact column name from your error message
-        col_name = 'Pre-Prod No.' 
+        # --- CLEAN INDENTATION STARTS HERE ---
+        col_name = None
+        for col in df_tracker.columns:
+            if 'Pre' in col and 'Prod' in col:
+                col_name = col
+                break
 
-        if col_name not in df_tracker.columns:
-            st.error(f"Column '{col_name}' not found. Available columns: {list(df_tracker.columns)}")
+        if not col_name:
+            st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
             return None
+
+        # Filter for the record
+        result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
+        
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        else:
+            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            
+    except Exception as e:
+        st.error(f"Error reading database: {e}")
+    return None
 
         # Filter for the record
         result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
