@@ -1,70 +1,82 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+
+# Set page to wide mode to accommodate multiple columns
+st.set_page_config(layout="wide", page_title="Injection Trial Tracker")
 
 st.title("Injection Trial Data Entry")
+st.markdown("---")
 
-# Use a form to group the inputs and prevent the app from 
-# refreshing after every single character typed.
-with st.form("trial_form", clear_on_submit=True):
+# Use a form to group all data entry fields
+with st.form("injection_trial_form", clear_on_submit=True):
     
-    # Section 1: General Info
-    col1, col2 = st.columns(2)
+    # ROW 1: Identity & Reference
+    col1, col2, col3 = st.columns(3)
     with col1:
-        date = st.date_input("Date")
-        machine = st.text_input("Machine")
+        date = st.date_input("Trial Date", datetime.now())
+        job_no = st.text_input("Job Number")
     with col2:
+        machine = st.text_input("Machine ID / Name")
         operator = st.text_input("Operator")
-        mold_name = st.text_input("Mold Name / Part Number")
+    with col3:
+        customer = st.text_input("Customer Name")
+        part_no = st.text_input("Part Number / Description")
 
-    st.divider()
-
-    # Section 2: Material & Masterbatch
-    st.subheader("Material Information")
-    c3, c4, c5 = st.columns(3)
-    with c3:
-        material = st.text_input("Material Type")
-    with c4:
+    st.subheader("Material & Masterbatch")
+    # ROW 2: Material Specs
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        mat_grade = st.text_input("Material Grade")
+    with col5:
         mb_code = st.text_input("Masterbatch Code")
-    with c5:
-        mb_ratio = st.number_input("MB Ratio (%)", step=0.1)
+    with col6:
+        mb_ratio = st.number_input("MB Ratio (%)", format="%.2f", step=0.01)
 
-    st.divider()
+    st.subheader("Machine Process Parameters")
+    # ROW 3: Temperatures (Zone based)
+    t1, t2, t3, t4 = st.columns(4)
+    with t1:
+        zone_1 = st.number_input("Zone 1 Temp (°C)", step=1)
+    with t2:
+        zone_2 = st.number_input("Zone 2 Temp (°C)", step=1)
+    with t3:
+        zone_3 = st.number_input("Zone 3 Temp (°C)", step=1)
+    with t4:
+        nozzle_temp = st.number_input("Nozzle Temp (°C)", step=1)
 
-    # Section 3: Process Parameters
-    st.subheader("Process Settings")
-    c6, c7, c8 = st.columns(3)
-    with c6:
-        inj_pressure = st.number_input("Injection Pressure (bar)")
-        holding_pressure = st.number_input("Holding Pressure (bar)")
-    with c7:
-        melt_temp = st.number_input("Melt Temp (°C)")
-        mold_temp = st.number_input("Mold Temp (°C)")
-    with c8:
-        cycle_time = st.number_input("Cycle Time (sec)", step=0.1)
-        cooling_time = st.number_input("Cooling Time (sec)", step=0.1)
+    # ROW 4: Pressures & Times
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
+        inj_press = st.number_input("Inj. Pressure (bar)", step=1)
+    with p2:
+        hold_press = st.number_input("Hold Pressure (bar)", step=1)
+    with p3:
+        cycle_time = st.number_input("Cycle Time (s)", format="%.2f", step=0.1)
+    with p4:
+        cool_time = st.number_input("Cooling Time (s)", format="%.2f", step=0.1)
 
-    st.divider()
+    st.subheader("Trial Observations")
+    comments = st.text_area("Notes (e.g., Short shots, flashing, dimensions)")
 
-    # Section 4: Observations
-    notes = st.text_area("Trial Observations / Comments")
-
-    # Submit Button
-    submit_button = st.form_submit_button("Save Trial Data")
+    # Submission logic
+    submit_button = st.form_submit_button("Record Trial Data")
 
 if submit_button:
-    # Creating a dictionary for the new entry
-    new_data = {
+    # Constructing a data record that matches your Excel schema
+    new_entry = {
         "Date": [date],
+        "Job No": [job_no],
         "Machine": [machine],
-        "Operator": [operator],
-        "Material": [material],
+        "Material": [mat_grade],
+        "MB Code": [mb_code],
         "Cycle Time": [cycle_time],
-        "Notes": [notes]
+        "Comments": [comments]
     }
     
-    # Convert to DataFrame
-    new_df = pd.DataFrame(new_data)
+    # Create DataFrame for processing
+    df_new = pd.DataFrame(new_entry)
     
-    # Logic to save to your .xlsm or .parquet file goes here
-    st.success("Data successfully recorded!")
-    st.balloons()
+    # Confirmation for user
+    st.success(f"Data for Job {job_no} has been recorded locally.")
+    st.dataframe(df_new)
