@@ -17,10 +17,10 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         date = st.date_input("Date", datetime.now())
         sales_rep = st.text_input("Sales Rep")
     with s2:
-        job_no = st.text_input("Job Number")
+        job_no = st.text_input("Pre-Prod No.")
         target_to = st.text_input("Target to")
     with s3:
-        customer = st.text_input("Customer")
+        customer = st.text_input("Client")
         trial_qty = st.number_input("Trial Quantity", step=1)
     with s4:
         operator = st.text_input("Operator")
@@ -100,5 +100,5 @@ if submit_trial:
         "Observations": [notes]
     }
     
-    st.success(f"Trial for Job {job_no} successfully captured.")
+    st.success(f"Trial for Job {preprod_no} successfully captured.")
     st.table(pd.DataFrame(trial_record))
