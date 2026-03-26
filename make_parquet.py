@@ -1,9 +1,12 @@
 import pandas as pd
 
-# Load the CSV you already have
-df = pd.read_csv("ProjectTrackerPP_Cleaned_NA.csv", low_memory=False)
+# Load the CSV using the semicolon separator
+df = pd.read_csv("ProjectTrackerPP_Cleaned_NA.csv", sep=';', low_memory=False)
 
-# This command creates the ACTUAL physical file on your hard drive
+# Check the columns to make sure they are separate now
+print("Columns found:", df.columns.tolist())
+
+# Save the corrected version
 df.to_parquet("ProjectTracker_Combined.parquet")
 
-print("The physical file 'ProjectTracker_Combined.parquet' has been created in your folder!")
+print("Success! The corrected Parquet file has been created.")
