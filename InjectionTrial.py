@@ -11,7 +11,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 
 # --- DATA LOOKUP FUNCTION ---
-
 def get_project_data(pre_prod_no):
     """Searches the combined parquet file for the Pre-Prod number."""
     if not os.path.exists(FILENAME_PARQUET):
@@ -21,16 +20,10 @@ def get_project_data(pre_prod_no):
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         
-        # --- DEBUGGING: SEE WHAT IS ACTUALLY INSIDE ---
-        with st.expander("Debug: Data View"):
-            st.write("Columns found:", df_tracker.columns.tolist())
-            st.write("First 3 rows of data:", df_tracker.head(3))
-        
         # Dynamic Column Detection
         col_name = None
         for col in df_tracker.columns:
-            # We use .lower() to be less strict during detection
-            if 'pre' in col.lower() and 'prod' in col.lower():
+            if 'Pre' in col and 'Prod' in col:
                 col_name = col
                 break
 
@@ -38,6 +31,50 @@ def get_project_data(pre_prod_no):
             st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
             return None
 
+        # Clean search term and database column
+        search_term = str(pre_prod_no).strip()
+        
+        # Convert DB column to string and remove '.0' if it exists
+        df_tracker[col_name] = (
+            df_tracker[col_name]
+            .astype(str)
+            .str.replace(r'\.0$', '', regex=True)
+            .str.strip()
+        )
+
+        # Filter for the record
+        result = df_tracker[df_tracker[col_name] == search_term]
+        
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        else:
+            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            
+    except Exception as e:
+        st.error(f"Error reading database: {e}")
+    return None
+
+        # 2. Clean the input and the data (Aligned exactly 8 spaces in)
+        search_term = str(pre_prod_no).strip()
+        
+        df_tracker[col_name] = (
+            df_tracker[col_name]
+            .astype(str)
+            .str.replace(r'\.0$', '', regex=True)
+            .str.strip()
+        )
+
+        # 3. Filter
+        result = df_tracker[df_tracker[col_name] == search_term]
+        
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        else:
+            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            
+    except Exception as e:
+        st.error(f"Error reading database: {e}")
+    return None
         # Clean search term
         search_term = str(pre_prod_no).strip()
         
