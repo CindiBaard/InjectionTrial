@@ -143,7 +143,7 @@ if search_input:
             product_code = st.text_input("Product Code", value=ld.get('Product Code', ''))
             material = st.text_input("Material", value=ld.get('Material', ''))
             pigment = st.text_input("Pigment_MB Grade", value=ld.get('Pigment_MB Grade', ''))
-            dosing_fitted = st.text_input("Is Dosing Unit Fitted", value=ld.get('Is Dosing Unit Fitted', ''))
+            if_no_dosing_unit_what_percentage_was_material_pre-mixed = st.text_input("if_no_dosing_unit_what_percentage_was_material_pre-mixed", value=ld.get('if no_dosing unit, what percentage was material pre-mixed', ''))
         with p4:
             # Logic to determine the default index based on existing data
             current_val = str(ld.get('Tinuvin', 'No')).strip().capitalize()
@@ -157,17 +157,23 @@ if search_input:
                 horizontal=False # Set to True if you want them side-by-side
             )
 
-                        
             # Using radio buttons for a "Yes/No" selection
-            Is_dosing_unit_calibrated  = st.radio(
-                "Is dosing unit calibrated",
+            is_dosing_unit_fitted_to_machine  = st.radio(
+                "Is dosing unit fitted to machine",
                 options=["Yes", "No"],
                 index=default_index,
                 horizontal=False # Set to True if you want them side-by-side
             )
 
 
-
+                        
+            # Using radio buttons for a "Yes/No" selection
+            is_dosing_unit_calibrated  = st.radio(
+                "Is dosing unit calibrated",
+                options=["Yes", "No"],
+                index=default_index,
+                horizontal=False # Set to True if you want them side-by-side
+            )
 
         st.divider()
         
