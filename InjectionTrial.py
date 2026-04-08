@@ -184,11 +184,12 @@ if search_input:
         
         # --- SECTION 3: DOSING UNIT SETTINGS ---
         st.subheader("3. Dosing Unit Settings")
-        d1, d2, d3, d4 = st.columns(4)
+        d1, d2, d3, d4, d5 = st.columns(4)
         with d1: colour_set = st.text_input("Colour Set Value", value=ld.get('Colour Set Value', ''))
         with d2: colour_act = st.text_input("Colour Actual", value=ld.get('Colour Actual', ''))
         with d3: colour_perc = st.text_input("Colour Percentage", value=ld.get('Colour Percentage', ''))
         with d4: shot_w = st.text_input("Shot Weight", value=ld.get('Shot Weight', ''))
+        with d5:dosing_time = st.text_input("Dosing Time", value=ld.get('Dosing Time', ''))
 
         st.divider()
 
