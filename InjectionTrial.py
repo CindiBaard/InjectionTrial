@@ -64,6 +64,34 @@ def display_trial_history(pre_prod_no):
         else:
             st.write("No previous trial history found for this Pre-Prod number.")
 
+def update_tracker_status(pre_prod_no):
+    """Updates the 'Injection trial requested' column to 'Submitted' in the CSV tracker."""
+    csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
+    
+    if not os.path.exists(csv_path):
+        st.error(f"Tracker CSV not found at: {csv_path}")
+        return
+
+    try:
+        # Load the CSV
+        df = pd.read_csv(csv_path)
+        col_id = "Pre-Prod No."
+        col_status = "Injection trial requested"
+
+        # Ensure types match for searching
+        search_term = str(pre_prod_no).strip()
+        df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+        if search_term in df[col_id].values:
+            # Update the status to 'Submitted' (or whatever status you prefer)
+            df.loc[df[col_id] == search_term, col_status] = "Submitted"
+            df.to_csv(csv_path, index=False)
+        else:
+            st.warning(f"Pre-Prod No. {search_term} not found in the CSV to update status.")
+            
+    except Exception as e:
+        st.error(f"Error updating CSV tracker: {e}")
+
 # --- INITIALIZE SESSION STATE ---
 if 'lookup_data' not in st.session_state:
     st.session_state.lookup_data = {}
@@ -220,7 +248,7 @@ if search_input:
 
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
-    if submit_trial:
+        if submit_trial:
         # 1. Capture all form data into a dictionary
         new_submission = {
             "Trial Ref": current_trial_ref,
@@ -232,11 +260,13 @@ if search_input:
             "Machine": machine_used,
             "Observations": notes,
             "Cycle Time": cyc_t,
-            "Inj Pressure": inj_p
-            # Note: Add all other variables here to ensure they save to the file
+            "Inj Pressure": inj_p,
+            "Tinuvin": tinuvin,
+            "Dosing Unit Fitted": is_dosing_unit_fitted_to_machine,
+            "Dosing Calibrated": is_dosing_unit_calibrated
         }
 
-        # 2. Append to Parquet file
+        # 2. Append to Parquet file (Historical Submissions)
         df_new = pd.DataFrame([new_submission])
         
         if os.path.exists(SUBMISSIONS_FILE):
@@ -247,7 +277,10 @@ if search_input:
             
         df_final.to_parquet(SUBMISSIONS_FILE)
         
-        st.success(f"Success! {current_trial_ref} has been recorded.")
+        # --- NEW STEP: UPDATE THE CSV TRACKER ---
+        update_tracker_status(search_input)
+        
+        st.success(f"Success! {current_trial_ref} recorded and tracker updated.")
         st.session_state.lookup_data = {}
         st.rerun()
 else:
