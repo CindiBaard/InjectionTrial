@@ -126,7 +126,9 @@ if search_input:
 
         # --- SECTION 2: PRODUCT SPECIFICATIONS ---
         st.subheader("2. Product Specifications")
-        p1, p2, p3 = st.columns(3)
+        # Changed to 4 columns to accommodate p4
+        p1, p2, p3, p4 = st.columns(4) 
+        
         with p1:
             description = st.text_input("Description", value=ld.get('Project Description', ''))
             length = st.text_input("Length", value=str(ld.get('Length', '')))
@@ -142,6 +144,18 @@ if search_input:
             material = st.text_input("Material", value=ld.get('Material', ''))
             pigment = st.text_input("Pigment_MB Grade", value=ld.get('Pigment_MB Grade', ''))
             dosing_fitted = st.text_input("Is Dosing Unit Fitted", value=ld.get('Is Dosing Unit Fitted', ''))
+        with p4:
+            # Logic to determine the default index based on existing data
+            current_val = str(ld.get('Tinuvin', 'No')).strip().capitalize()
+            default_index = 0 if current_val == "Yes" else 1
+            
+            # Using radio buttons for a "Yes/No" selection
+            tinuvin = st.radio(
+                "Tinuvin",
+                options=["Yes", "No"],
+                index=default_index,
+                horizontal=False # Set to True if you want them side-by-side
+            )
 
         st.divider()
         
