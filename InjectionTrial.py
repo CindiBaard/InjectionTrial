@@ -196,12 +196,6 @@ if search_input:
 
         # --- SECTION 4: MACHINE PROCESS SETTINGS ---
         st.subheader("4. Machine Process Settings")
-        t1, t2, t3, t4, t5 = st.columns(5)
-        with t1: zone_1 = st.number_input("Zone 1", step=1)
-        with t2: zone_2 = st.number_input("Zone 2", step=1)
-        with t3: zone_3 = st.number_input("Zone 3", step=1)
-        with t4: zone_4 = st.number_input("Zone 4", step=1)
-        with t5: nozzle = st.number_input("Nozzle", step=1)
 
         st.write("**Pressures, Speeds & Times**")
         pr1, pr2, pr3, pr4 = st.columns(4)
