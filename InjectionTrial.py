@@ -120,7 +120,8 @@ if search_input:
             trial_qty = st.number_input("Trial Quantity", step=1)
         with s4:
             operator = st.text_input("Operator")
-            machine_used = st.text_input("Machine used for Trial", value=ld.get('Machine', ''))
+            machine_used_to_print = st.text_input("Production Machine", value=ld.get('Machine', ''))
+            machine_used = st.text_input("Trial Machine", value=ld.get('Trial Machine', ''))
 
         st.divider()
 
