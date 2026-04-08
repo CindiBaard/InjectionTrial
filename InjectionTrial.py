@@ -155,6 +155,7 @@ if search_input:
                 options=["Yes", "No"],
                 index=default_index,
                 horizontal=False # Set to True if you want them side-by-side
+            )
 
                         
             # Using radio buttons for a "Yes/No" selection
@@ -164,6 +165,7 @@ if search_input:
                 index=default_index,
                 horizontal=False # Set to True if you want them side-by-side
             )
+
 
 
 
