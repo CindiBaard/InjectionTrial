@@ -158,8 +158,8 @@ if search_input:
             )
 
             # Using radio buttons for a "Yes/No" selection
-            Is dosing unit calibrated  = st.radio(
-                "Tinuvin",
+            Is_dosing_unit_calibrated  = st.radio(
+                "Is dosing unit calibrated",
                 options=["Yes", "No"],
                 index=default_index,
                 horizontal=False # Set to True if you want them side-by-side
