@@ -3,31 +3,66 @@ import pandas as pd
 from datetime import datetime
 import os
 
-# --- CONFIG & PATHS ---
+# --- PAGE CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
+
+# --- DIRECTORY SETUP ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
-# This is where you save your SUBMITTED trials
 SUBMISSIONS_FILE = os.path.join(BASE_DIR, "Trial_Submissions.parquet")
 
-# --- DATA LOOKUP --- (Existing function remains the same)
-def get_project_data(pre_prod_no):
-    # ... (Your existing get_project_data code) ...
-    pass
+# --- HELPER FUNCTIONS ---
 
-# --- NEW: TRIAL HISTORY FUNCTION ---
+def get_project_data(pre_prod_no):
+    """Searches the combined parquet file for the Pre-Prod number."""
+    if not os.path.exists(FILENAME_PARQUET):
+        st.error(f"Database file not found at: {FILENAME_PARQUET}")
+        return None
+
+    try:
+        df_tracker = pd.read_parquet(FILENAME_PARQUET)
+        col_name = "Pre-Prod No." 
+        
+        if col_name not in df_tracker.columns:
+            st.error(f"Column '{col_name}' not found.")
+            return None
+
+        search_term = str(pre_prod_no).strip()
+        df_tracker[col_name] = df_tracker[col_name].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+        result = df_tracker[df_tracker[col_name] == search_term]
+        return result.iloc[0].to_dict() if not result.empty else None
+            
+    except Exception as e:
+        st.error(f"Error reading project database: {e}")
+    return None
+
+def get_next_trial_reference(pre_prod_no):
+    """Calculates the next trial number (e.g., 12345_T2) by checking submission history."""
+    if not os.path.exists(SUBMISSIONS_FILE):
+        return f"{pre_prod_no}_T1"
+    
+    try:
+        df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        # Ensure ID is treated as string for comparison
+        existing_trials = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)]
+        count = len(existing_trials)
+        return f"{pre_prod_no}_T{count + 1}"
+    except:
+        return f"{pre_prod_no}_T1"
+
 def display_trial_history(pre_prod_no):
-    """Displays a timeline/table of previous trials for this ID."""
+    """Displays a summary table of previous trials for this project."""
     if os.path.exists(SUBMISSIONS_FILE):
         df = pd.read_parquet(SUBMISSIONS_FILE)
-        history = df[df['Pre-Prod No.'] == str(pre_prod_no)].sort_values('Date')
+        history = df[df['Pre-Prod No.'] == str(pre_prod_no)].sort_values('Date', ascending=False)
         
         if not history.empty:
-            st.info(f"Total Trials for {pre_prod_no}: **{len(history)}**")
-            # Show a simplified timeline/table
+            st.info(f"Existing Trials Found: **{len(history)}**")
+            # Show relevant columns for a quick overview
             st.dataframe(history[['Trial Ref', 'Date', 'Operator', 'Observations']], use_container_width=True)
         else:
-            st.write("No previous trials recorded for this project.")
+            st.write("No previous trial history found for this Pre-Prod number.")
 
 # --- INITIALIZE SESSION STATE ---
 if 'lookup_data' not in st.session_state:
@@ -35,66 +70,152 @@ if 'lookup_data' not in st.session_state:
 
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
-search_input = st.text_input("Enter Pre-Prod No. (e.g. 11925):")
 
-if st.button("Pull Information"):
-    if search_input:
-        data = get_project_data(search_input)
-        if data:
-            st.session_state.lookup_data = data
-            st.rerun()
+st.subheader("Search Project Tracker")
+col_s1, col_s2 = st.columns([1, 3])
+with col_s1:
+    search_input = st.text_input("Enter Pre-Prod No. (e.g. 11925):")
+with col_s2:
+    st.write("##") 
+    if st.button("Pull Information"):
+        if search_input:
+            data = get_project_data(search_input)
+            if data:
+                st.session_state.lookup_data = data
+                st.success(f"Project details loaded for {search_input}")
+            else:
+                st.warning("No project data found. You can still fill the form manually.")
+                st.session_state.lookup_data = {}
 
 st.divider()
 
-# --- TRIAL SUMMARY / TIMELINE ---
+# --- TRIAL HISTORY SECTION ---
 if search_input:
-    st.subheader(f"Trial History for: {search_input}")
+    st.subheader(f"Trial Timeline: {search_input}")
     display_trial_history(search_input)
     st.divider()
 
 # --- MAIN FORM ---
-if st.session_state.lookup_data:
+# We use the search_input as the base for the Trial Reference
+if search_input:
     ld = st.session_state.lookup_data
-    
-    # Generate the auto-reference: e.g. 11925_T2
-    trial_ref = get_next_trial_reference(search_input, SUBMISSIONS_FILE)
+    current_trial_ref = get_next_trial_reference(search_input)
 
     with st.form("injection_xlsm_form", clear_on_submit=True):
-        st.subheader(f"New Entry: {trial_ref}") # Visual confirmation of Trial No.
+        st.subheader(f"New Trial Entry: {current_trial_ref}")
         
+        # --- SECTION 1: SALES & ADMINISTRATION ---
+        st.subheader("1. Sales & Administration")
         s1, s2, s3, s4 = st.columns(4)
         with s1:
-            date = st.date_input("Date", datetime.now())
+            trial_date = st.date_input("Date", datetime.now())
             sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
         with s2:
-            # We store the unique reference here
-            job_no = st.text_input("Pre-Prod No.", value=search_input, disabled=True)
-            current_ref = st.text_input("Trial Reference", value=trial_ref, disabled=True)
-        # ... [Rest of your columns s3, s4 and Sections 2-5 remain the same] ...
+            # Displaying the auto-generated trial reference
+            job_no_display = st.text_input("Base Pre-Prod No.", value=search_input, disabled=True)
+            active_ref = st.text_input("Trial Reference", value=current_trial_ref, disabled=True)
+            target_to = st.text_input("Target to", value=ld.get('Target to', ''))
+        with s3:
+            client = st.text_input("Client", value=ld.get('Client', ''))
+            trial_qty = st.number_input("Trial Quantity", step=1)
+        with s4:
+            operator = st.text_input("Operator")
+            machine_used = st.text_input("Machine used for Trial", value=ld.get('Machine', ''))
+
+        st.divider()
+
+        # --- SECTION 2: PRODUCT SPECIFICATIONS ---
+        st.subheader("2. Product Specifications")
+        p1, p2, p3 = st.columns(3)
+        with p1:
+            description = st.text_input("Description", value=ld.get('Project Description', ''))
+            length = st.text_input("Length", value=str(ld.get('Length', '')))
+            orifice = st.text_input("Orifice", value=str(ld.get('Orifice', '')))
+            supplier = st.text_input("Supplier", value=str(ld.get('Supplier', '')))
+        with p2:
+            cap_lid_style = st.text_input("Cap_Lid Style", value=ld.get('Cap_Lid Style', ''))
+            cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', ''))
+            cap_lid_diameter = st.text_input("Cap_Lid Diameter", value=str(ld.get('Diameter', '')))
+            mix = st.text_input("Mix_%", value=str(ld.get('Mix_%', '')))
+        with p3:
+            product_code = st.text_input("Product Code", value=ld.get('Product Code', ''))
+            material = st.text_input("Material", value=ld.get('Material', ''))
+            pigment = st.text_input("Pigment_MB Grade", value=ld.get('Pigment_MB Grade', ''))
+            dosing_fitted = st.text_input("Is Dosing Unit Fitted", value=ld.get('Is Dosing Unit Fitted', ''))
+
+        st.divider()
+        
+        # --- SECTION 3: DOSING UNIT SETTINGS ---
+        st.subheader("3. Dosing Unit Settings")
+        d1, d2, d3, d4 = st.columns(4)
+        with d1: colour_set = st.text_input("Colour Set Value", value=ld.get('Colour Set Value', ''))
+        with d2: colour_act = st.text_input("Colour Actual", value=ld.get('Colour Actual', ''))
+        with d3: colour_perc = st.text_input("Colour Percentage", value=ld.get('Colour Percentage', ''))
+        with d4: shot_w = st.text_input("Shot Weight", value=ld.get('Shot Weight', ''))
+
+        st.divider()
+
+        # --- SECTION 4: MACHINE PROCESS SETTINGS ---
+        st.subheader("4. Machine Process Settings")
+        t1, t2, t3, t4, t5 = st.columns(5)
+        with t1: zone_1 = st.number_input("Zone 1", step=1)
+        with t2: zone_2 = st.number_input("Zone 2", step=1)
+        with t3: zone_3 = st.number_input("Zone 3", step=1)
+        with t4: zone_4 = st.number_input("Zone 4", step=1)
+        with t5: nozzle = st.number_input("Nozzle", step=1)
+
+        st.write("**Pressures, Speeds & Times**")
+        pr1, pr2, pr3, pr4 = st.columns(4)
+        with pr1:
+            inj_p = st.number_input("Injection Pressure (bar)", step=1)
+            hold_p = st.number_input("Holding Pressure (bar)", step=1)
+        with pr2:
+            inj_s = st.number_input("Injection Speed (mm/s)", step=1)
+            back_p = st.number_input("Back Pressure (bar)", step=1)
+        with pr3:
+            cyc_t = st.number_input("Total Cycle Time (s)", format="%.2f")
+            cool_t = st.number_input("Cooling Time (s)", format="%.2f")
+        with pr4:
+            dos_s = st.number_input("Dosage Stroke (mm)", step=1)
+            dec_m = st.number_input("Decompression (mm)", step=1)
+
+        st.divider()
+
+        # --- SECTION 5: OBSERVATIONS ---
+        st.subheader("5. Trial Observations")
+        notes = st.text_area("Observations")
 
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
     if submit_trial:
-        # Create a dictionary of the form data
-        new_data = {
-            "Trial Ref": trial_ref,
+        # 1. Capture all form data into a dictionary
+        new_submission = {
+            "Trial Ref": current_trial_ref,
             "Pre-Prod No.": search_input,
-            "Date": date.strftime("%Y-%m-%d"),
+            "Date": trial_date.strftime("%Y-%m-%d"),
+            "Sales Rep": sales_rep,
+            "Client": client,
             "Operator": operator,
+            "Machine": machine_used,
             "Observations": notes,
-            # ... Add all other form fields here ...
+            "Cycle Time": cyc_t,
+            "Inj Pressure": inj_p
+            # Note: Add all other variables here to ensure they save to the file
         }
+
+        # 2. Append to Parquet file
+        df_new = pd.DataFrame([new_submission])
         
-        # LOGIC TO SAVE DATA
-        df_new = pd.DataFrame([new_data])
         if os.path.exists(SUBMISSIONS_FILE):
-            df_old = pd.read_parquet(SUBMISSIONS_FILE)
-            df_final = pd.concat([df_old, df_new], ignore_index=True)
+            df_existing = pd.read_parquet(SUBMISSIONS_FILE)
+            df_final = pd.concat([df_existing, df_new], ignore_index=True)
         else:
             df_final = df_new
-        
+            
         df_final.to_parquet(SUBMISSIONS_FILE)
         
-        st.success(f"Success! {trial_ref} recorded.")
+        st.success(f"Success! {current_trial_ref} has been recorded.")
         st.session_state.lookup_data = {}
         st.rerun()
+else:
+    st.info("Please enter a Pre-Prod Number above to start a trial.")
