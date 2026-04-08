@@ -143,7 +143,7 @@ if search_input:
             product_code = st.text_input("Product Code", value=ld.get('Product Code', ''))
             material = st.text_input("Material", value=ld.get('Material', ''))
             pigment = st.text_input("Pigment_MB Grade", value=ld.get('Pigment_MB Grade', ''))
-            if_no_dosing_unit_what_percentage_was_material_pre-mixed = st.text_input("if_no_dosing_unit_what_percentage_was_material_pre-mixed", value=ld.get('if no_dosing unit, what percentage was material pre-mixed', ''))
+            no_dosing_unit_what_percentage_was_material_pre-mixed = st.text_input("no_dosing_unit_what_percentage_was_material_pre-mixed", value=ld.get('if no_dosing unit, what percentage was material pre-mixed', ''))
         with p4:
             # Logic to determine the default index based on existing data
             current_val = str(ld.get('Tinuvin', 'No')).strip().capitalize()
