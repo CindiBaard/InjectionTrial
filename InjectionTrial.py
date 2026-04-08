@@ -155,8 +155,8 @@ if search_input:
                 options=["Yes", "No"],
                 index=default_index,
                 horizontal=False # Set to True if you want them side-by-side
-            )
 
+                        
             # Using radio buttons for a "Yes/No" selection
             Is_dosing_unit_calibrated  = st.radio(
                 "Is dosing unit calibrated",
@@ -164,6 +164,8 @@ if search_input:
                 index=default_index,
                 horizontal=False # Set to True if you want them side-by-side
             )
+
+
 
         st.divider()
         
