@@ -157,6 +157,14 @@ if search_input:
                 horizontal=False # Set to True if you want them side-by-side
             )
 
+            # Using radio buttons for a "Yes/No" selection
+            Is dosing unit calibrated  = st.radio(
+                "Tinuvin",
+                options=["Yes", "No"],
+                index=default_index,
+                horizontal=False # Set to True if you want them side-by-side
+            )
+
         st.divider()
         
         # --- SECTION 3: DOSING UNIT SETTINGS ---
