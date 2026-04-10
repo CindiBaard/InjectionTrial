@@ -213,10 +213,11 @@ if search_input:
 
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
-        if submit_trial:
+if submit_trial:
             with st.status("Saving Data...", expanded=True) as status:
-                st.write("📝 Writing to local history (Parquet)...")
+                st.write("📝 Writing to trial history...")
                 
+                # 1. Create the submission record
                 new_submission = {
                     "Trial Ref": current_trial_ref,
                     "Pre-Prod No.": search_input,
@@ -224,19 +225,11 @@ if search_input:
                     "Sales Rep": sales_rep,
                     "Client": client,
                     "Operator": operator,
-                    "Machine Prod": machine_prod,
-                    "Machine Trial": machine_trial,
                     "Observations": notes,
-                    "Cycle Time": cyc_t,
-                    "Inj Pressure": inj_p,
-                    "Tinuvin": tinuvin_val,
-                    "Dosing Unit Fitted": dosing_fitted,
-                    "Dosing Calibrated": dosing_calib,
-                    "Colour Set": colour_set,
-                    "Shot Weight": shot_w
+                    # ... (keep all your other fields here)
                 }
 
-                # Save to Parquet
+                # Save to Trial_Submissions.parquet (History)
                 df_new = pd.DataFrame([new_submission])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_existing = pd.read_parquet(SUBMISSIONS_FILE)
@@ -244,19 +237,46 @@ if search_input:
                 else:
                     df_final = df_new
                 df_final.to_parquet(SUBMISSIONS_FILE)
-                
-                # --- GOOGLE SHEETS UPDATE ---
+
+                # --- NEW STEP: UPDATE LOCAL TRACKER FILE ---
+                st.write("💾 Updating local Project Tracker file...")
+                if os.path.exists(FILENAME_PARQUET):
+                    df_tracker = pd.read_parquet(FILENAME_PARQUET)
+                    
+                    # Ensure ID matches (padding)
+                    def pad_id(val):
+                        val_str = str(val).strip().split('.')[0]
+                        return val_str.zfill(5)
+                    
+                    search_id = pad_id(search_input)
+                    df_tracker['Pre-Prod No.'] = df_tracker['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().apply(lambda x: x.zfill(5))
+                    
+                    # Prepare the combined value (T1 - 10/04/2026)
+                    trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+                    combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
+                    
+                    # Update the specific cell in the local dataframe
+                    mask = df_tracker['Pre-Prod No.'] == search_id
+                    if mask.any():
+                        df_tracker.loc[mask, 'Injection trial requested'] = combined_value
+                        df_tracker.to_parquet(FILENAME_PARQUET, index=False)
+                        st.write("✅ Local Parquet Updated.")
+                    else:
+                        st.warning("Could not find ID in local Parquet to update.")
+
+                # --- 2. GOOGLE SHEETS UPDATE ---
                 st.write("🌐 Attempting Cloud Sync (Google Sheets)...")
                 success, msg = update_tracker_status(search_input, current_trial_ref)
                 
                 if success:
                     st.write(f"✅ Cloud Sync Complete: {msg}")
-                    status.update(label="Submission Processed!", state="complete", expanded=False)
+                    status.update(label="Submission Processed & Synced!", state="complete", expanded=False)
                     st.session_state.submitted = True
+                    # Clear cache so the search results refresh
+                    st.cache_data.clear() 
                 else:
                     st.error(f"❌ Cloud Sync Failed: {msg}")
                     status.update(label="Local Saved, Cloud Sync Failed", state="error", expanded=True)
-
     if st.session_state.get('submitted', False):
         if st.button("Start Next Entry"):
             st.session_state.lookup_data = {}
