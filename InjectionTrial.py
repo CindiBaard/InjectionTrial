@@ -225,11 +225,10 @@ if search_input:
         st.subheader("5. Trial Observations")
         notes = st.text_area("Observations")
 
-        # SUBMIT BUTTON (Only one instance inside the form)
+# --- SUBMIT BUTTON (Inside the form) ---
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            # We use a status container to see progress
             with st.status("Saving Data...", expanded=True) as status:
                 st.write("📝 Writing to local history (Parquet)...")
                 
@@ -237,7 +236,7 @@ if search_input:
                     "Trial Ref": current_trial_ref,
                     "Pre-Prod No.": search_input,
                     "Date": trial_date.strftime("%Y-%m-%d"),
-                    "Injection trial requested": trial_date.strftime("%d/%m/%Y"), # Fixed key
+                    "Injection trial requested": trial_date.strftime("%d/%m/%Y"),
                     "Sales Rep": sales_rep,
                     "Client": client,
                     "Operator": operator,
@@ -251,7 +250,7 @@ if search_input:
                     "Dosing Calibrated": dosing_calib
                 }
 
-                # Save to Parquet (This part is working for you)
+                # Save to Parquet
                 df_new = pd.DataFrame([new_submission])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_existing = pd.read_parquet(SUBMISSIONS_FILE)
@@ -260,24 +259,28 @@ if search_input:
                     df_final = df_new
                 df_final.to_parquet(SUBMISSIONS_FILE)
                 
-                # --- GOOGLE SHEETS UPDATE WITH ERROR CATCHING ---
+                # --- GOOGLE SHEETS UPDATE ---
                 st.write("🌐 Attempting Cloud Sync (Google Sheets)...")
                 try:
                     update_tracker_status(search_input)
                     st.write("✅ Cloud Sync Complete!")
                 except Exception as e:
-                    # This prevents the app from crashing if Google fails
                     st.error(f"❌ Cloud Sync Failed: {str(e)}")
                     st.info("The local trial was saved, but the Project Tracker wasn't updated.")
 
                 status.update(label="Submission Processed!", state="complete", expanded=False)
-
-            # Do NOT use st.rerun() here yet, or the message will vanish!
-            st.success(f"Final Success: {current_trial_ref} recorded.")
             
-            # Use a button to reset the form manually so you can read the messages
-            if st.button("Start Next Entry"):
-                st.session_state.lookup_data = {}
-                st.rerun()
+            # Record submission in session state to show the reset button later
+            st.session_state.submitted = True
+            st.success(f"Final Success: {current_trial_ref} recorded.")
+
+    # --- OUTSIDE THE FORM (Un-indented) ---
+    # Show the reset button only if we just submitted a trial
+    if st.session_state.get('submitted', False):
+        if st.button("Start Next Entry"):
+            st.session_state.lookup_data = {}
+            st.session_state.submitted = False  # Reset the flag
+            st.rerun()
+
 else:
     st.info("Enter a Pre-Prod Number to begin.")
