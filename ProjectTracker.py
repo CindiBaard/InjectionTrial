@@ -329,9 +329,9 @@ elif tab_nav == "🌐 Cloud Sync":
     
     col_a, col_b = st.columns(2)
     
-    # --- PULL DATA (Updated to actually save) ---
+    # --- UPDATED PULL DATA ---
     if col_a.button("📥 Fetch & Sync from Google", use_container_width=True):
-        with st.spinner("Syncing from Cloud..."):
+        with st.status("Syncing with Google Sheets...", expanded=True) as status:
             try:
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
                 creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
@@ -341,26 +341,29 @@ elif tab_nav == "🌐 Cloud Sync":
                 creds = Credentials.from_service_account_info(creds_info, scopes=scope)
                 client = gspread.authorize(creds)
                 
+                # Fetch the Spreadsheet
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
                 
-                # Fetch data
+                # 1. Download Data
+                st.write("Reading from Cloud...")
                 cloud_data = pd.DataFrame(worksheet.get_all_records())
                 
                 if not cloud_data.empty:
-                    # Save to local Parquet so the Search/Edit tab sees it
+                    # 2. OVERWRITE THE LOCAL DATABASE
+                    st.write("Updating Local Parquet File...")
                     cloud_data.to_parquet(FILENAME_PARQUET, index=False)
                     
-                    # Force Streamlit to forget the old data
+                    # 3. CLEAR CACHE & REFRESH
                     st.cache_data.clear()
-                    
-                    st.session_state.google_data = cloud_data
-                    st.success("✅ Local Database Updated from Google Sheets!")
-                    st.rerun()
+                    status.update(label="Sync Complete!", state="complete", expanded=False)
+                    st.success("Successfully updated local database. You can now search for updated entries.")
+                    st.rerun() # This reloads the app with the new data
                 else:
                     st.warning("Google Sheet was empty.")
             except Exception as e:
                 st.error(f"Fetch failed: {e}")
+Why this fixes it:
 
     # --- PUSH DATA ---
     if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
