@@ -3,8 +3,12 @@ import pandas as pd
 from datetime import datetime
 import os
 
+
 # --- PAGE CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
+
+#---- CONFIGURATION
+REF_FILE = https://docs.google.com/spreadsheets/d/1UtoZnl8vLKmP47UhxdPDzCZABhccWcyEnC-YV5mTW-Y/edit?gid=0#gid=0
 
 # --- DIRECTORY SETUP ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -55,28 +59,65 @@ def display_trial_history(pre_prod_no):
             st.write("No previous trial history found.")
 
 def update_tracker_status(pre_prod_no):
-    csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
-    if not os.path.exists(csv_path):
-        st.error(f"Tracker CSV not found at: {csv_path}")
-        return
+    import gspread
+    from google.oauth2.service_account import Credentials
+    from datetime import datetime
+    import time
+    import streamlit as st
+
     try:
-        df = pd.read_csv(csv_path)
-        col_id = "Pre-Prod No."
-        col_status = "Injection trial requested"
-        search_term = str(pre_prod_no).strip()
-        df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        if search_term in df[col_id].values:
-            df.loc[df[col_id] == search_term, col_status] = "Submitted"
-            df.to_csv(csv_path, index=False)
+        # 1. Credentials Setup
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        if isinstance(creds_info, dict) and "private_key" in creds_info:
+             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # 2. Open Sheet
+        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+        worksheet = spreadsheet.get_worksheet(0) 
+        
+        # 3. Padding logic for ID matching
+        def pad_id(val):
+            val_str = str(val).strip().split('.')[0]
+            if '_' in val_str:
+                parts = val_str.split('_', 1)
+                return f"{parts[0].zfill(5)}_{parts[1]}"
+            return val_str.zfill(5)
+
+        search_id = pad_id(pre_prod_no)
+        st.write(f"🔍 Searching for ID: **{search_id}**...")
+
+        # 4. Find the Row (Direct Search)
+        # This looks in Column A (index 1) for your Pre-Prod No.
+        try:
+            cell = worksheet.find(search_id, in_column=1)
+            row_idx = cell.row
+            st.write(f"✅ Found at Row: {row_idx}")
+        except:
+            st.error(f"❌ ID '{search_id}' not found in Column A of the Google Sheet.")
+            return
+
+        # 5. Find the Column Header
+        headers = [h.strip() for h in worksheet.row_values(1)]
+        col_name = "Injection trial requested"
+        
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            current_date = datetime.now().strftime('%d/%m/%Y')
+            
+            # 6. PERFORM THE UPDATE
+            worksheet.update_cell(row_idx, col_idx, current_date)
+            st.success(f"🚀 Google Sheet Updated! Row {row_idx}, Col {col_idx}")
+            time.sleep(2)
         else:
-            st.warning(f"Pre-Prod No. {search_term} not found in CSV to update.")
+            st.error(f"❌ Could not find column '{col_name}' in headers: {headers}")
+
     except Exception as e:
-        st.error(f"Error updating CSV: {e}")
-
-# --- INITIALIZE SESSION STATE ---
-if 'lookup_data' not in st.session_state:
-    st.session_state.lookup_data = {}
-
+        st.error(f"⚠️ Google Sheets Error: {e}")
+        
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
@@ -188,37 +229,55 @@ if search_input:
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            new_submission = {
-                "Trial Ref": current_trial_ref,
-                "Pre-Prod No.": search_input,
-                "Date": trial_date.strftime("%Y-%m-%d"),
-                "Sales Rep": sales_rep,
-                "Client": client,
-                "Operator": operator,
-                "Machine Prod": machine_prod,
-                "Machine Trial": machine_trial,
-                "Observations": notes,
-                "Cycle Time": cyc_t,
-                "Inj Pressure": inj_p,
-                "Tinuvin": tinuvin_val,
-                "Dosing Unit Fitted": dosing_fitted,
-                "Dosing Calibrated": dosing_calib
-            }
+            # We use a status container to see progress
+            with st.status("Saving Data...", expanded=True) as status:
+                st.write("📝 Writing to local history (Parquet)...")
+                
+                new_submission = {
+                    "Trial Ref": current_trial_ref,
+                    "Pre-Prod No.": search_input,
+                    "Date": trial_date.strftime("%Y-%m-%d"),
+                    "Injection trial requested": trial_date.strftime("%d/%m/%Y"), # Fixed key
+                    "Sales Rep": sales_rep,
+                    "Client": client,
+                    "Operator": operator,
+                    "Machine Prod": machine_prod,
+                    "Machine Trial": machine_trial,
+                    "Observations": notes,
+                    "Cycle Time": cyc_t,
+                    "Inj Pressure": inj_p,
+                    "Tinuvin": tinuvin_val,
+                    "Dosing Unit Fitted": dosing_fitted,
+                    "Dosing Calibrated": dosing_calib
+                }
 
-            # 2. Append to Parquet
-            df_new = pd.DataFrame([new_submission])
-            if os.path.exists(SUBMISSIONS_FILE):
-                df_existing = pd.read_parquet(SUBMISSIONS_FILE)
-                df_final = pd.concat([df_existing, df_new], ignore_index=True)
-            else:
-                df_final = df_new
-            df_final.to_parquet(SUBMISSIONS_FILE)
+                # Save to Parquet (This part is working for you)
+                df_new = pd.DataFrame([new_submission])
+                if os.path.exists(SUBMISSIONS_FILE):
+                    df_existing = pd.read_parquet(SUBMISSIONS_FILE)
+                    df_final = pd.concat([df_existing, df_new], ignore_index=True)
+                else:
+                    df_final = df_new
+                df_final.to_parquet(SUBMISSIONS_FILE)
+                
+                # --- GOOGLE SHEETS UPDATE WITH ERROR CATCHING ---
+                st.write("🌐 Attempting Cloud Sync (Google Sheets)...")
+                try:
+                    update_tracker_status(search_input)
+                    st.write("✅ Cloud Sync Complete!")
+                except Exception as e:
+                    # This prevents the app from crashing if Google fails
+                    st.error(f"❌ Cloud Sync Failed: {str(e)}")
+                    st.info("The local trial was saved, but the Project Tracker wasn't updated.")
+
+                status.update(label="Submission Processed!", state="complete", expanded=False)
+
+            # Do NOT use st.rerun() here yet, or the message will vanish!
+            st.success(f"Final Success: {current_trial_ref} recorded.")
             
-            # 3. Update Tracker CSV
-            update_tracker_status(search_input)
-            
-            st.success(f"Success! {current_trial_ref} recorded.")
-            st.session_state.lookup_data = {}
-            st.rerun()
+            # Use a button to reset the form manually so you can read the messages
+            if st.button("Start Next Entry"):
+                st.session_state.lookup_data = {}
+                st.rerun()
 else:
     st.info("Enter a Pre-Prod Number to begin.")
