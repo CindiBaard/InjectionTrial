@@ -8,7 +8,7 @@ import os
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
 #---- CONFIGURATION
-REF_FILE = https://docs.google.com/spreadsheets/d/1UtoZnl8vLKmP47UhxdPDzCZABhccWcyEnC-YV5mTW-Y/edit?gid=0#gid=0
+REF_FILE = "https://docs.google.com/spreadsheets/d/1UtoZnl8vLKmP47UhxdPDzCZABhccWcyEnC-YV5mTW-Y/edit?gid=0#gid=0"
 
 # --- DIRECTORY SETUP ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
