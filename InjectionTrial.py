@@ -58,7 +58,7 @@ def display_trial_history(pre_prod_no):
         else:
             st.write("No previous trial history found.")
 
-def update_tracker_status(pre_prod_no):
+def update_tracker_status(pre_prod_no, current_trial_ref):
     import gspread
     from google.oauth2.service_account import Credentials
     from datetime import datetime
@@ -75,9 +75,10 @@ def update_tracker_status(pre_prod_no):
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # 2. Open Sheet
-        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-        worksheet = spreadsheet.get_worksheet(0) 
+        # 2. Open Project Tracker Spreadsheet
+        # Use the ID from your update_tracker_status function
+        tracker_spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
         
         # 3. Padding logic for ID matching
         def pad_id(val):
@@ -88,18 +89,39 @@ def update_tracker_status(pre_prod_no):
             return val_str.zfill(5)
 
         search_id = pad_id(pre_prod_no)
-        st.write(f"🔍 Searching for ID: **{search_id}**...")
+        st.write(f"🔍 Searching for ID: **{search_id}** in Project Tracker...")
 
-        # 4. Find the Row (Direct Search)
-        # This looks in Column A (index 1) for your Pre-Prod No.
+        # 4. Find the Row in Project Tracker
         try:
-            cell = worksheet.find(search_id, in_column=1)
+            cell = tracker_worksheet.find(search_id, in_column=1)
             row_idx = cell.row
             st.write(f"✅ Found at Row: {row_idx}")
         except:
-            st.error(f"❌ ID '{search_id}' not found in Column A of the Google Sheet.")
+            st.error(f"❌ ID '{search_id}' not found in Column A of the Project Tracker.")
             return
 
+        # 5. Prepare the Combined Value (Latest Trial + Date)
+        # Extract the T-number (e.g., "T2") from the full reference (e.g., "11925_T2")
+        trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+        current_date = datetime.now().strftime('%d/%m/%Y')
+        combined_value = f"{trial_suffix} - {current_date}"
+
+        # 6. Find Column and Update
+        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
+        col_name = "Injection trial requested"
+        
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            
+            # PERFORM THE UPDATE
+            tracker_worksheet.update_cell(row_idx, col_idx, combined_value)
+            st.success(f"🚀 Project Tracker Updated with: **{combined_value}**")
+            time.sleep(2)
+        else:
+            st.error(f"❌ Could not find column '{col_name}' in headers: {headers}")
+
+    except Exception as e:
+        st.error(f"⚠️ Google Sheets Error: {e}")
         # 5. Find the Column Header
         headers = [h.strip() for h in worksheet.row_values(1)]
         col_name = "Injection trial requested"
