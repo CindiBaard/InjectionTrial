@@ -139,6 +139,10 @@ if search_input:
     display_trial_history(search_input)
     st.divider()
 
+if st.sidebar.button("♻️ Refresh Data Sources"):
+    st.cache_data.clear()
+    st.success("Cache cleared! Try searching again.")
+
 if search_input:
     ld = st.session_state.get('lookup_data', {})
     current_trial_ref = get_next_trial_reference(search_input)
