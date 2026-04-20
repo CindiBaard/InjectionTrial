@@ -248,7 +248,7 @@ def create_pdf(data):
 
 # ... [Keep all your existing code until the form submission] ...
 
-        if submit_trial:
+if submit_trial:
             # Create a dictionary for the PDF (including fields from 'ld' and form)
             pdf_data = {
                 "Trial Reference": current_trial_ref,
@@ -292,7 +292,7 @@ def create_pdf(data):
         if st.button("Start Next Entry"):
             st.session_state.lookup_data = {}
             st.session_state.submitted = False 
-            st.rerun()
+            st.rerun()        
 
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
