@@ -11,10 +11,7 @@ st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATHS & CONFIG ---
-
-# This gets the directory where the actual .py file is stored
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+BASE_DIR = os.getcwd() 
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
@@ -31,7 +28,7 @@ DESIRED_ORDER = [
     "Proof Approved (Conventional)", "Proof Approved (Digital)", "Ordered Plates", 
     "Plates Arrived", "Sent on Trial", "Digital trial received", 
     "Revised Artwork After Trialling", "Masterbatch received", "Extrusion requested", 
-    "Extrusion received", "Injection trial requested", "Injection Trial Received", 
+    "Extrusion received", "Injection trial requested", "Injection Trial received", 
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
@@ -64,16 +61,98 @@ def get_next_available_id(search_no, existing_ids):
     return f"{base}_NEW"
 
 def pad_preprod_id(val):
-    if pd.isna(val) or str(val).strip() == '': return ""
+    if pd.isna(val) or str(val).strip() == '': 
+        return ""
     val_str = str(val).strip().split('.')[0]
     if '_' in val_str:
         parts = val_str.split('_', 1)
-        return f"{parts[0].zfill(5)}_{parts[1]}"
-    return val_str.zfill(5)
+        return f"{parts[0]}_{parts[1]}"
+    return val_str
 
 def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
+
+def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
+    """Updates the Project Tracker Google Sheet with 'T# - Date'"""
+    import gspread
+    from google.oauth2.service_account import Credentials
+    
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        
+        # Handle credentials from Streamlit secrets
+        if "gcp_service_account" in st.secrets:
+            creds_info = st.secrets["gcp_service_account"]
+        else:
+            creds_info = st.secrets["connections"]["gsheets"]
+            
+        if isinstance(creds_info, dict) and "private_key" in creds_info:
+             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        tracker_spreadsheet = client.open_by_key(TRACKER_FILE_ID)
+        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
+
+        def pad_id(input_val):
+            if pd.isna(input_val) or str(input_val).strip() == '': 
+                return ""
+            val_str = str(input_val).strip().split('.')[0]
+            return val_str
+
+        search_id = pad_id(pre_prod_no)
+        cell = tracker_worksheet.find(search_id, in_column=1)
+        
+        if not cell:
+            return False, f"ID {search_id} not found in Sheet."
+            
+        row_idx = cell.row
+
+        # Construct: T1 - 10/04/2026
+        trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+        # Use manual_date if syncing history, otherwise use today
+        date_str = manual_date if manual_date else datetime.now().strftime('%d/%m/%Y')
+        combined_value = f"{trial_suffix} - {date_str}"
+
+        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
+        col_name = "Injection trial requested"
+        
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            tracker_worksheet.update_cell(row_idx, col_idx, combined_value)
+            return True, combined_value
+        else:
+            return False, f"Column '{col_name}' not found."
+            
+    except Exception as e:
+        return False, str(e)
+
+def sync_last_trial_to_cloud(pre_prod_no):
+    """Finds the most recent trial in history and pushes it to Google Sheets."""
+    if not os.path.exists(SUBMISSIONS_FILE):
+        return False, "No history file found."
+    
+    try:
+        df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
+        
+        if project_history.empty:
+            # If no history exists, we clear the status in the sheet
+            return update_tracker_status(pre_prod_no, "No Trials", manual_date="N/A") 
+
+        # Extract number to sort correctly
+        project_history['Trial_Num'] = project_history['Trial Ref'].str.extract(r'(\d+)$').astype(int)
+        latest_trial = project_history.sort_values(by=['Trial_Num'], ascending=False).iloc[0]
+        
+        return update_tracker_status(
+            pre_prod_no, 
+            latest_trial['Trial Ref'], 
+            manual_date=datetime.strptime(latest_trial['Date'], '%Y-%m-%d').strftime('%d/%m/%Y')
+        )
+    except Exception as e:
+        return False, str(e)
 
 def calculate_age_category(row):
     try:
@@ -109,6 +188,8 @@ def save_db(df):
 
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+    # If force_refresh is hit, we should try to pull from GSheets first
+    # then overwrite the Parquet file.
     if os.path.exists(parquet_path) and not force_refresh:
         return pd.read_parquet(parquet_path)
     
@@ -159,7 +240,6 @@ def load_trial_data():
 # --- 6. UI HELPERS ---
 
 def display_combination_table(key_prefix):
-    # FIXED Line 169: Removed the duplicated "ATIONS_FILE):"
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
@@ -212,17 +292,52 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    c_s, c_cl = st.columns([4, 1])
+    c_s, c_cl, c_sy = st.columns([3, 1, 1])
+    
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+    
     if c_cl.button("♻️ Clear", use_container_width=True):
         st.session_state.last_search_no = ""
         st.rerun()
 
-    search_no = pad_preprod_id(raw_search)
-    if search_no != st.session_state.last_search_no:
-        st.session_state.last_search_no = search_no
-        st.rerun()
+    # --- FIXED SYNC CLOUD BLOCK ---
+    if c_sy.button("🔄 Sync Cloud", use_container_width=True):
+        with st.spinner("Downloading latest from Google..."):
+            try:
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
+                from google.oauth2.service_account import Credentials
+                import gspread
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
+                spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+                worksheet = spreadsheet.get_worksheet(0)
+                
+                # Fetch and force to string to prevent the 'int64' conversion error
+                new_df = pd.DataFrame(worksheet.get_all_records()).astype(str)
+                
+                if not new_df.empty:
+                    new_df['Pre-Prod No.'] = (
+                        new_df['Pre-Prod No.']
+                        .str.replace(r'\.0$', '', regex=True)
+                        .str.strip()
+                    )
+                    new_df = new_df.replace('nan', '')
+                    new_df.to_parquet(FILENAME_PARQUET, index=False, engine='pyarrow')
+                    
+                    st.cache_data.clear()
+                    st.success("Cloud Data Pulled!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Sync failed: {e}")
 
+    # This line must be at the same level as the 'if c_sy.button' block
+    search_no = pad_preprod_id(raw_search)
+
+    # Simplified Match Logic (Removed the redundant cache clear on search)
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
     
     if search_no and not match.empty:
@@ -277,13 +392,23 @@ if tab_nav == "🔍 Search & Edit":
             if st.form_submit_button("💾 Save Changes", use_container_width=True):
                 status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals.update({"Status": status, "Open or closed": status})
-                for k, v in updated_vals.items(): df.at[idx, k] = v
+                
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
                 save_db(df)
+                
+                trial_status = updated_vals.get("Injection trial requested", "")
+                if trial_status:
+                    with st.spinner("Syncing Trial to Google..."):
+                        update_tracker_status_single(search_no, trial_status)
+                
                 st.session_state.selected_combo = {}
-                st.success("Saved locally!")
+                st.cache_data.clear()
+                st.success("Saved locally & Synced to Cloud!")
                 st.rerun()
+
     elif search_no:
-        st.warning("No project found.")
+        st.warning(f"No project found for '{search_no}'. Try 'Sync Cloud' if it was recently added.")
 
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
@@ -293,7 +418,7 @@ elif tab_nav == "➕ Add New Job":
     
     with st.form("new_job_form"):
         st.subheader("New Project Entry")
-        new_id = st.text_input("Pre-Prod No.", value=default_id)
+        new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
         new_cols = st.columns(3)
         new_entry = {"Pre-Prod No.": new_id}
         
@@ -310,63 +435,31 @@ elif tab_nav == "➕ Add New Job":
                     new_entry[col] = st.text_input(col, value=val)
 
         if st.form_submit_button("➕ Create Project", use_container_width=True):
-            status = "Closed" if new_entry.get("Completion date") else "Open"
-            new_entry.update({"Status": status, "Open or closed": status})
-            df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-            save_db(df)
-            st.cache_data.clear() 
-            st.session_state.form_data = {}
-            st.session_state.selected_combo = {}
-            st.success("Job Added!")
-            st.rerun()
+            if new_id == "":
+                st.error("Pre-Prod No. cannot be empty.")
+            elif not df.empty and new_id in df['Pre-Prod No.'].astype(str).values:
+                st.error(f"🚨 Duplicate Error: Pre-Prod No. **{new_id}** already exists!")
+            else:
+                status = "Closed" if new_entry.get("Completion date") else "Open"
+                new_entry.update({"Status": status, "Open or closed": status})
+                df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+                save_db(df)
+                st.cache_data.clear() 
+                st.session_state.form_data = {}
+                st.session_state.selected_combo = {}
+                st.success(f"✅ Job {new_id} Added!")
+                st.rerun()
 
 # --- TAB 5: GOOGLE CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("🌐 Google Sheets Database Sync")
-    
     import gspread
     from google.oauth2.service_account import Credentials
     
     col_a, col_b = st.columns(2)
     
-    # --- UPDATED PULL DATA ---
-    if col_a.button("📥 Fetch & Sync from Google", use_container_width=True):
-        with st.status("Syncing with Google Sheets...", expanded=True) as status:
-            try:
-                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
-                if isinstance(creds_info, dict) and "private_key" in creds_info:
-                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-                
-                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-                client = gspread.authorize(creds)
-                
-                # Fetch the Spreadsheet
-                spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-                worksheet = spreadsheet.get_worksheet(0)
-                
-                # 1. Download Data
-                st.write("Reading from Cloud...")
-                cloud_data = pd.DataFrame(worksheet.get_all_records())
-                
-                if not cloud_data.empty:
-                    # 2. OVERWRITE THE LOCAL DATABASE
-                    st.write("Updating Local Parquet File...")
-                    cloud_data.to_parquet(FILENAME_PARQUET, index=False)
-                    
-                    # 3. CLEAR CACHE & REFRESH
-                    st.cache_data.clear()
-                    status.update(label="Sync Complete!", state="complete", expanded=False)
-                    st.success("Successfully updated local database. You can now search for updated entries.")
-                    st.rerun() # This reloads the app with the new data
-                else:
-                    st.warning("Google Sheet was empty.")
-            except Exception as e:
-                st.error(f"Fetch failed: {e}")
-Why this fixes it:
-
-    # --- PUSH DATA ---
-    if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
+    # --- COLUMN A: FETCH FROM GOOGLE ---
+    if col_a.button("📥 Fetch from Google (Overwrite Local)", use_container_width=True):
         try:
             scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
@@ -375,17 +468,70 @@ Why this fixes it:
             
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
             client = gspread.authorize(creds)
-            
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
             
-            worksheet.clear()
-            export_df = df.fillna("")
-            worksheet.update([export_df.columns.values.tolist()] + export_df.values.tolist())
-            st.success("Successfully synced local database to Google Sheets!")
+            # Get Data
+            cloud_data = pd.DataFrame(worksheet.get_all_records())
+            
+            if not cloud_data.empty:
+                # 1. Standardize column names
+                cloud_data = clean_column_names(cloud_data)
+                
+                # 2. Convert everything to string to prevent "int/bytes" errors
+                cloud_data = cloud_data.astype(str)
+                
+                # 3. Clean 'Pre-Prod No.' formatting and handle 'nan'
+                cloud_data['Pre-Prod No.'] = (
+                    cloud_data['Pre-Prod No.']
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.strip()
+                )
+                cloud_data = cloud_data.replace('nan', '')
+                
+                # 4. Save to local Parquet
+                cloud_data.to_parquet(FILENAME_PARQUET, index=False, engine='pyarrow')
+                
+                st.session_state.google_data = cloud_data
+                st.success("✅ Local Database Updated from Cloud!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.warning("The Google Sheet appears to be empty.")
+                
+        except Exception as e:
+            st.error(f"Fetch failed: {e}")
+
+    # --- COLUMN B: PUSH TO GOOGLE ---
+    if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
+        try:
+            with st.spinner("Uploading to Google Sheets..."):
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
+                spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+                worksheet = spreadsheet.get_worksheet(0)
+                
+                # 1. Prepare current local data for upload
+                # We use the current 'df' loaded at the start of the script
+                export_df = df.copy().fillna("")
+                export_df = export_df.astype(str) # Keep it as strings for Google
+                
+                # 2. Clear worksheet and upload fresh
+                worksheet.clear()
+                # Prepare data as a list of lists for gspread
+                data_to_upload = [export_df.columns.values.tolist()] + export_df.values.tolist()
+                worksheet.update(data_to_upload)
+                
+                st.success("✅ Cloud Spreadsheet Successfully Updated!")
         except Exception as e:
             st.error(f"Push failed: {e}")
 
+    # Preview section (Optional)
     if "google_data" in st.session_state:
         st.write("### Preview: Cloud Data")
         st.dataframe(st.session_state.google_data, use_container_width=True)
@@ -402,18 +548,13 @@ elif tab_nav == "📊 Detailed Age Analysis":
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     trial_df = load_trial_data()
-    
     if not trial_df.empty:
-        # Group data by week and calculate the mean of Days_Taken
         weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
-        
         col1, col2 = st.columns([1, 3])
         with col1:
             avg_val = trial_df['Days_Taken'].mean()
             st.metric("Avg Turnaround (Total)", f"{avg_val:.1f} Days")
-            st.write("Weekly Averages:")
             st.dataframe(weekly_stats.rename("Avg Days"), use_container_width=True)
-        
         with col2:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', linestyle='-', color='#2ca02c')
@@ -423,12 +564,5 @@ elif tab_nav == "🧪 Trial Trends":
             ax.grid(True, alpha=0.3)
             st.pyplot(fig)
     else:
-        st.info("No trial data found to analyze.")
-
-# --- END OF FILE ---D OF FILE ---_Taken'].mean().sort_index()
-        if not weekly_stats.empty:
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
-            ax.set_ylabel("Average Days")
-            ax.set_xlabel("Week Number")
-            st.pyplot(fig)
+        st.info("No trial data found.")
+# --- END OF FILE ---
