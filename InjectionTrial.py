@@ -143,24 +143,22 @@ with st.sidebar:
             # Create labels for the dropdown
             trial_labels = hist_df.apply(lambda x: f"{x['Trial Reference']} ({x['Date']})", axis=1).tolist()
             selected_label = st.selectbox("Select Trial to Remove", options=trial_labels)
-            selected_ref = selected_label.split(" (")[0]
+            selected_ref = str(selected_label).split(" (")[0]
             
-            # --- INSIDE THE SIDEBAR DELETE BLOCK IN InjectionTrial.py ---
-
-if st.button("🗑️ Delete from Local & Cloud", type="primary"):
+            if st.button("🗑️ Delete from Local & Cloud", type="primary"):
                 with st.spinner(f"Removing {selected_ref}..."):
                     try:
-                        # 1. DELETE FROM GOOGLE SHEETS
+                        # 1. DELETE FROM GOOGLE SHEETS (Trial Timeline)
                         client_gs = get_gspread_client()
                         t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
+                        
+                        # Find the cell containing the unique Trial Reference
                         cell = t_sheet.find(selected_ref)
                         
-# --- CHECK THIS EXACT ALIGNMENT ---
-
                         if cell:
                             t_sheet.delete_rows(cell.row)
                             st.toast(f"Cloud row {cell.row} removed.")
-                        else: # <--- THIS IS LINE 183
+                        else:
                             st.warning("Trial Reference not found in Google Sheets.")
 
                         # 2. DELETE FROM LOCAL PARQUET
@@ -168,7 +166,6 @@ if st.button("🗑️ Delete from Local & Cloud", type="primary"):
                         updated_df.to_parquet(SUBMISSIONS_FILE, index=False)
                         
                         # 3. TRIGGER MASTER SYNC
-                        # We split the reference (e.g., 11925_T2) to get the ID (11925)
                         pre_id = selected_ref.split('_')[0]
                         success, msg = sync_last_trial_to_cloud(pre_id)
                         
