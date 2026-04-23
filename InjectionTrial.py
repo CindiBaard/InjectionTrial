@@ -1120,35 +1120,6 @@ if search_input:
 
             st.rerun(): The previously saved trials are not pulling through to the InjectionTrial file:
 
-If you deleted entries, use the Sync button to update the Master Tracker.
-
-
-
-
-
-Sync failed: No history file found.
-
-I also don't see a button to save the file as a pdf
-
-It looks like there are two main issues here: the Sync function isn't finding your local database, and the PDF Download button is missing because of where it sits in the code's logic.
-
-Here is the breakdown and the fix for your script:
-
-1. Fixing the "No history file found" Error
-The error happens because sync_last_trial_to_cloud is looking for SUBMISSIONS_FILE. If you haven't submitted a trial in this specific session or if the file path is being misinterpreted, it fails.
-
-The Fix: We need to ensure the path is consistent and that the function handles the "None" state properly if the file is truly missing.
-
-2. Fixing the Missing PDF Button
-In your provided code, the PDF logic and the "Success" message are currently inside a block that only runs after a fresh search (if search_input:). If the app reruns or the search input clears, the button vanishes.
-
-Updated Code Blocks
-Replace these specific sections in your script to fix the logic:
-
-Part A: Robust Sync Function
-Update the sync_last_trial_to_cloud function to include a check for the file's existence and ensure it's reading the same path your save function uses.
-
-Python
 def sync_last_trial_to_cloud(pre_prod_no):
     """Finds the most recent trial in history and pushes it to Google Sheets."""
     # Ensure we use the absolute path defined at the top
