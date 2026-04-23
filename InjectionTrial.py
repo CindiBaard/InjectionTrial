@@ -121,7 +121,10 @@ def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
             return str(input_val).strip().split('.')[0]
 
         search_id = pad_id(pre_prod_no)
-        cell = tracker_worksheet.find(search_id, in_column=1)
+        import re
+        # Creates a regex that matches the ID exactly
+        search_re = re.compile(rf"^{search_id}$") 
+        cell = tracker_worksheet.find(search_re, in_column=1)
         
         # SAFETY CHECK: If cell is None, the ID wasn't found
         if cell is None:
