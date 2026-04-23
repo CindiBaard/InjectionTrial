@@ -66,7 +66,6 @@ def delete_trial_entry(trial_ref):
 def display_trial_history(pre_prod_no):
     if os.path.exists(SUBMISSIONS_FILE):
         df = pd.read_parquet(SUBMISSIONS_FILE)
-        # Convert to string to ensure filtering works correctly
         df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str)
         history = df[df['Pre-Prod No.'] == str(pre_prod_no)].sort_values('Date', ascending=False)
         
@@ -75,13 +74,14 @@ def display_trial_history(pre_prod_no):
             for index, row in history.iterrows():
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.write(f"**{row['Trial Ref']}** | {row['Date']} | {row['Operator']}")
+                    # CHANGE 'Trial Ref' TO 'Trial Reference'
+                    st.write(f"**{row['Trial Reference']}** | {row['Date']} | {row['Operator']}")
                     st.caption(f"Note: {row['Observations']}")
                 with col2:
-                    # FIX: Added 'index' to the key to guarantee uniqueness
-                    if st.button(f"Delete", key=f"del_{row['Trial Ref']}_{index}"):
-                        if delete_trial_entry(row['Trial Ref']):
-                            st.success(f"Deleted {row['Trial Ref']}")
+                    # CHANGE 'Trial Ref' TO 'Trial Reference'
+                    if st.button(f"Delete", key=f"del_{row['Trial Reference']}_{index}"):
+                        if delete_trial_entry(row['Trial Reference']):
+                            st.success(f"Deleted {row['Trial Reference']}")
                             time.sleep(1) 
                             st.rerun()
                 st.divider()
