@@ -76,19 +76,6 @@ def delete_trial_entry(trial_ref):
             return False, None
     return False, None
 
-Conversation with Gemini
-import streamlit as st
-
-import pandas as pd
-
-from datetime import datetime
-
-import os
-
-import time
-
-
-
 # --- PAGE CONFIGURATION ---
 
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
