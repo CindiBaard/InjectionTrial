@@ -240,6 +240,58 @@ def create_pdf(data):
 
     return pdf.output(dest='S').encode('latin-1')
 
+import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
+
+# --- SETTINGS ---
+TRACKER_FILE_ID = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
+
+def initialize_google_sheet_headers():
+    # 1. Define the exact keys from your 'full_data' dictionary
+    # This ensures your Spreadsheet matches your Python code perfectly
+    headers = [
+        "Trial Reference", "Pre-Prod No.", "Date", "Sales Rep", "Target to",
+        "Client", "Trial Quantity", "Operator", "Production Machine",
+        "Trial Machine", "Description", "Length", "Orifice", "Supplier",
+        "Cap_Lid Style", "Cap_Lid Material", "Diameter", "Mix_%",
+        "Product Code", "Material", "Pigment_MB Grade", "Pre-mix %",
+        "Tinuvin", "Dosing Unit Fitted", "Dosing Calibrated", "Colour Set",
+        "Colour Actual", "Colour Percentage", "Shot Weight", "Dosing Time",
+        "Inj Pressure", "Holding Pressure", "Injection Speed", "Back Pressure",
+        "Cycle Time", "Cooling Time", "Dosage Stroke", "Decompression",
+        "Observations"
+    ]
+
+    try:
+        # 2. Authentication (using your existing secrets logic)
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        
+        if isinstance(creds_info, dict) and "private_key" in creds_info:
+             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # 3. Open the sheet
+        spreadsheet = client.open_by_key(TRACKER_FILE_ID)
+        worksheet = spreadsheet.get_worksheet(0) # Targets the first tab
+
+        # 4. Check if the first cell is empty before writing to avoid overwriting data
+        if not worksheet.acell('A1').value:
+            worksheet.insert_row(headers, 1)
+            st.success("✅ Headers created successfully in Google Sheets!")
+        else:
+            st.warning("⚠️ Sheet already has data in the first row. No headers were added.")
+
+    except Exception as e:
+        st.error(f"Failed to create headers: {e}")
+
+# To run this, you could add a button in your Sidebar temporarily:
+if st.sidebar.button("🛠️ Initialize GSHEET Headers"):
+    initialize_google_sheet_headers()
+
 # --- INITIALIZE SESSION STATE ---
 if 'lookup_data' not in st.session_state:
     st.session_state.lookup_data = {}
