@@ -155,10 +155,12 @@ if st.button("🗑️ Delete from Local & Cloud", type="primary"):
                         t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
                         cell = t_sheet.find(selected_ref)
                         
+# --- CHECK THIS EXACT ALIGNMENT ---
+
                         if cell:
                             t_sheet.delete_rows(cell.row)
                             st.toast(f"Cloud row {cell.row} removed.")
-                        else:
+                        else: # <--- THIS IS LINE 183
                             st.warning("Trial Reference not found in Google Sheets.")
 
                         # 2. DELETE FROM LOCAL PARQUET
