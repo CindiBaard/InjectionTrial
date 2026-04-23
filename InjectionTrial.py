@@ -72,6 +72,60 @@ def create_pdf(data):
         pdf.cell(0, 7, txt=f"{str(value)}", border=0, ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
+def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
+    """Helper to update the Master Project Tracker sheet"""
+    try:
+        client = get_gspread_client()
+        # Use the Master Tracker ID from your config
+        tracker_spreadsheet = client.open_by_key(MASTER_TRACKER_ID)
+        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
+
+        search_id = str(pre_prod_no).strip().split('.')[0]
+        cell = tracker_worksheet.find(search_id, in_column=1)
+        
+        if not cell:
+            return False, f"ID {search_id} not found."
+            
+        # Construct the display string: "T1 - 10/04/2026" or "None -  "
+        trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+        date_str = manual_date if manual_date else datetime.now().strftime('%d/%m/%Y')
+        combined_value = f"{trial_suffix} - {date_str}"
+
+        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
+        col_name = "Injection trial requested"
+        
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            tracker_worksheet.update_cell(cell.row, col_idx, combined_value)
+            return True, combined_value
+        return False, "Column not found."
+    except Exception as e:
+        return False, str(e)
+
+def sync_last_trial_to_cloud(pre_prod_no):
+    if not os.path.exists(SUBMISSIONS_FILE):
+        return False, "No history file found."
+    
+    try:
+        df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        df_history['Pre-Prod No.'] = df_history['Pre-Prod No.'].astype(str)
+        project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
+        
+        if project_history.empty:
+            return update_tracker_status(pre_prod_no, "None", manual_date=" ") 
+
+        # Corrected column name to match your trial data structure
+        project_history['Trial_Num'] = project_history['Trial Reference'].str.extract(r'(\d+)$').astype(int)
+        latest_trial = project_history.sort_values(by=['Trial_Num'], ascending=False).iloc[0]
+        
+        return update_tracker_status(
+            pre_prod_no, 
+            latest_trial['Trial Reference'], 
+            manual_date=datetime.strptime(latest_trial['Date'], '%Y-%m-%d').strftime('%d/%m/%Y')
+        )
+    except Exception as e:
+        return False, f"Sync Error: {str(e)}"
+
 # --- 3. SIDEBAR (With Local & Cloud Delete) ---
 with st.sidebar:
     st.header("Admin Controls")
@@ -91,32 +145,41 @@ with st.sidebar:
             selected_label = st.selectbox("Select Trial to Remove", options=trial_labels)
             selected_ref = selected_label.split(" (")[0]
             
-            if st.button("🗑️ Delete from Local & Cloud", type="primary"):
-                with st.spinner(f"Removing {selected_ref}..."):
-                    try:
-                        # 1. DELETE FROM GOOGLE SHEETS (Trial Timeline)
-                        client_gs = get_gspread_client()
-                        t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
-                        
-                        # Find the cell containing the unique Trial Reference
-                        cell = t_sheet.find(selected_ref)
-                        
-                        if cell:
-                            t_sheet.delete_rows(cell.row)
-                            st.toast(f"Cloud row {cell.row} removed.")
-                        else:
-                            st.warning("Trial Reference not found in Google Sheets.")
+            # --- INSIDE THE SIDEBAR DELETE BLOCK IN InjectionTrial.py ---
 
-                        # 2. DELETE FROM LOCAL PARQUET
-                        updated_df = hist_df[hist_df['Trial Reference'] != selected_ref]
-                        updated_df.to_parquet(SUBMISSIONS_FILE, index=False)
-                        
-                        st.success(f"Successfully deleted {selected_ref}")
-                        time.sleep(1)
-                        st.rerun()
+if st.button("🗑️ Delete from Local & Cloud", type="primary"):
+    with st.spinner(f"Removing {selected_ref}..."):
+        try:
+            # 1. DELETE FROM GOOGLE SHEETS (Trial Timeline)
+            client_gs = get_gspread_client()
+            t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
+            cell = t_sheet.find(selected_ref)
+            
+            if cell:
+                t_sheet.delete_rows(cell.row)
+            
+            # 2. DELETE FROM LOCAL PARQUET (Trial_Submissions.parquet)
+            updated_df = hist_df[hist_df['Trial Reference'] != selected_ref]
+            updated_df.to_parquet(SUBMISSIONS_FILE, index=False)
 
-                    except Exception as e:
-                        st.error(f"Error during deletion: {e}")
+            # --- NEW ADDITION: TRIGGER MASTER SYNC ---
+            # Extract the Pre-Prod No from the deleted reference (e.g., "11925_T2" -> "11925")
+            pre_prod_no_to_sync = selected_ref.split('_')[0]
+            
+            # Import and call the sync function from your logic
+            # (Ensure sync_last_trial_to_cloud is defined in this file or imported)
+            success, msg = sync_last_trial_to_cloud(pre_prod_no_to_sync)
+            
+            if success:
+                st.success(f"Deleted {selected_ref}. Master Tracker updated to: {msg}")
+            else:
+                st.warning(f"Deleted {selected_ref}, but Master Tracker update failed: {msg}")
+
+            time.sleep(1)
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Error during deletion: {e}")
         else:
             st.info("Local database is empty.")
     else:
