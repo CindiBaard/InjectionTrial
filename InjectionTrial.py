@@ -72,7 +72,7 @@ def create_pdf(data):
         pdf.cell(0, 7, txt=f"{str(value)}", border=0, ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. SIDEBAR ---
+# --- 3. SIDEBAR (With Restore/Delete) ---
 with st.sidebar:
     st.header("Admin Controls")
     if st.button("♻️ Refresh Cache"):
@@ -80,13 +80,36 @@ with st.sidebar:
         st.success("Cache Cleared")
     
     st.divider()
-    st.subheader("Historical Lookup")
+    st.subheader("Manage Local Trials")
+    
     if os.path.exists(SUBMISSIONS_FILE):
-        if st.button("📂 View Local Database"):
-            hist_df = pd.read_parquet(SUBMISSIONS_FILE)
-            st.dataframe(hist_df.tail(10))
+        hist_df = pd.read_parquet(SUBMISSIONS_FILE)
+        
+        if not hist_df.empty:
+            # Create a list of labels for the selectbox
+            # Using Trial Reference + Date so it's easy to identify
+            trial_list = hist_df.apply(lambda x: f"{x['Trial Reference']} ({x['Date']})", axis=1).tolist()
+            
+            selected_trial_label = st.selectbox("Select Trial to Delete", options=trial_list)
+            
+            # Extract the actual Trial Reference from the label
+            selected_ref = selected_trial_label.split(" (")[0]
+            
+            if st.button("🗑️ Delete Selected Trial", type="primary"):
+                # Filter out the selected trial
+                updated_df = hist_df[hist_df['Trial Reference'] != selected_ref]
+                
+                # Save back to Parquet
+                updated_df.to_parquet(SUBMISSIONS_FILE, index=False)
+                
+                st.warning(f"Deleted {selected_ref} from local database.")
+                st.info("Note: This does NOT remove the row from Google Sheets. Please delete that manually if required.")
+                time.sleep(1)
+                st.rerun()
+        else:
+            st.info("Local database is currently empty.")
     else:
-        st.info("No local submissions yet.")
+        st.info("No local submissions file found.")
 
 # --- 4. MAIN INTERFACE ---
 st.title("Injection Trial Data Entry")
