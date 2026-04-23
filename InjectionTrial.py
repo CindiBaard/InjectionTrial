@@ -157,6 +157,10 @@ if st.button("🗑️ Delete from Local & Cloud", type="primary"):
             
             if cell:
                 t_sheet.delete_rows(cell.row)
+
+
+else: 
+    st.warning("Trial Reference not found in Google Sheets.")
             
             # 2. DELETE FROM LOCAL PARQUET (Trial_Submissions.parquet)
             updated_df = hist_df[hist_df['Trial Reference'] != selected_ref]
