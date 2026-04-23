@@ -59,9 +59,16 @@ def delete_trial_entry(trial_ref):
     if os.path.exists(SUBMISSIONS_FILE):
         try:
             df = pd.read_parquet(SUBMISSIONS_FILE)
-            df_filtered = df[df['Trial Ref'] != trial_ref]
-            df_filtered.to_parquet(SUBMISSIONS_FILE, index=False)
-            return True
+            
+            # CHANGE 'Trial Ref' TO 'Trial Reference'
+            if 'Trial Reference' in df.columns:
+                df_filtered = df[df['Trial Reference'] != trial_ref]
+                df_filtered.to_parquet(SUBMISSIONS_FILE, index=False)
+                return True
+            else:
+                st.error("Column 'Trial Reference' not found in database.")
+                return False
+                
         except Exception as e:
             st.error(f"Error deleting entry: {e}")
             return False
