@@ -122,6 +122,10 @@ def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
 
         search_id = pad_id(pre_prod_no)
         cell = tracker_worksheet.find(search_id, in_column=1)
+        
+        # SAFETY CHECK: If cell is None, the ID wasn't found
+        if cell is None:
+            return False, f"Pre-Prod No. '{search_id}' not found in the Master Tracker spreadsheet."
         row_idx = cell.row
         headers = [h.strip() for h in tracker_worksheet.row_values(1)]
         col_name = "Injection trial requested"
