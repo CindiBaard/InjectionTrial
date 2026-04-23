@@ -9,8 +9,12 @@ import io
 # --- PAGE CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
-# ---- CONFIGURATION
-TRACKER_FILE_ID = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
+# --- CONFIGURATION ---
+# 1. The Master Project Tracker (where we pull info and update status)
+MASTER_TRACKER_ID = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
+
+# 2. The Trial Timeline (where we save the 39 columns of history)
+TRIAL_TIMELINE_ID = "1UtoZnl8vLKmP47UhxdPDzCZABhccWcyEnC-YV5mTW-Y"
 
 # --- DIRECTORY SETUP ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -88,59 +92,49 @@ def display_trial_history(pre_prod_no):
         else:
             st.write("No previous trial history found.")
 
-def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
+def update_cloud_databases(pre_prod_no, current_trial_ref, full_data_dict):
+    """Handles all Google Sheets updates in one go."""
     import gspread
     from google.oauth2.service_account import Credentials
 
-    trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
-
-    if manual_date:
-        try:
-            date_obj = datetime.strptime(manual_date, "%Y-%m-%d")
-            date_str = date_obj.strftime('%d/%m/%Y')
-        except:
-            date_str = manual_date
-        combined_value = f"{trial_suffix} - {date_str}"
-    else:
-        combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
+    # --- 1. SETUP AUTH ---
+    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+    if isinstance(creds_info, dict) and "private_key" in creds_info:
+         creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+    
+    creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+    client = gspread.authorize(creds)
 
     try:
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
-        if isinstance(creds_info, dict) and "private_key" in creds_info:
-             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        # --- TASK A: UPDATE MASTER PROJECT TRACKER (Status Only) ---
+        master_sheet = client.open_by_key(MASTER_TRACKER_ID).get_worksheet(0)
         
-        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        client = gspread.authorize(creds)
-        tracker_spreadsheet = client.open_by_key(TRACKER_FILE_ID)
-        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
+        # Clean the ID for searching
+        search_id = str(pre_prod_no).strip().split('.')[0]
+        cell = master_sheet.find(search_id, in_column=1)
+        
+        if cell:
+            headers = [h.strip() for h in master_sheet.row_values(1)]
+            col_name = "Injection trial requested"
+            if col_name in headers:
+                col_idx = headers.index(col_name) + 1
+                # Format: T1 - 23/04/2026
+                trial_suffix = current_trial_ref.split('_')[-1]
+                status_val = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
+                master_sheet.update_cell(cell.row, col_idx, status_val)
+        
+        # --- TASK B: APPEND TO TRIAL TIMELINE (Full History) ---
+        timeline_sheet = client.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
+        
+        # Ensure the list of values follows the EXACT order of your headers
+        row_to_append = list(full_data_dict.values())
+        timeline_sheet.append_row(row_to_append)
 
-        def pad_id(input_val):
-            if pd.isna(input_val) or str(input_val).strip() == '': 
-                return ""
-            return str(input_val).strip().split('.')[0]
+        return True, "Both Cloud Databases updated successfully."
 
-        search_id = pad_id(pre_prod_no)
-        import re
-        # Creates a regex that matches the ID exactly
-        search_re = re.compile(rf"^{search_id}$") 
-        cell = tracker_worksheet.find(search_re, in_column=1)
-        
-        # SAFETY CHECK: If cell is None, the ID wasn't found
-        if cell is None:
-            return False, f"Pre-Prod No. '{search_id}' not found in the Master Tracker spreadsheet."
-        row_idx = cell.row
-        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
-        col_name = "Injection trial requested"
-        
-        if col_name in headers:
-            col_idx = headers.index(col_name) + 1
-            tracker_worksheet.update_cell(row_idx, col_idx, combined_value)
-            return True, combined_value
-        else:
-            return False, f"Column '{col_name}' not found."
     except Exception as e:
-        return False, str(e)
+        return False, f"Cloud Sync Error: {str(e)}"
 
 def sync_last_trial_to_cloud(pre_prod_no):
     if not os.path.exists(SUBMISSIONS_FILE):
@@ -533,7 +527,7 @@ if search_input:
                 df_final.to_parquet(SUBMISSIONS_FILE, index=False, engine='pyarrow')
 
                 # Cloud Sync
-                success, msg = update_tracker_status(search_input, current_trial_ref)
+                success, msg = update_cloud_databases(search_input, current_trial_ref, full_data)
                 if success:
                     st.session_state.submitted = True
                     st.cache_data.clear()
