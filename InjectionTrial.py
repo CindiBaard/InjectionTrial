@@ -245,11 +245,14 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # --- SETTINGS ---
-TRACKER_FILE_ID = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
+TRACKER_FILE_ID = "1UtoZnl8vLKmP47UhxdPDzCZABhccWcyEnC-YV5mTW-Y"
+
+# --- GOOGLE SHEETS INITIALIZATION TOOL ---
 
 def initialize_google_sheet_headers():
-    # 1. Define the exact keys from your 'full_data' dictionary
-    # This ensures your Spreadsheet matches your Python code perfectly
+    """Creates headers in the 'Trial Timeline' spreadsheet if it is empty."""
+    
+    # These headers are extracted exactly from your 'full_data' dictionary keys
     headers = [
         "Trial Reference", "Pre-Prod No.", "Date", "Sales Rep", "Target to",
         "Client", "Trial Quantity", "Operator", "Production Machine",
@@ -264,32 +267,41 @@ def initialize_google_sheet_headers():
     ]
 
     try:
-        # 2. Authentication (using your existing secrets logic)
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
         
+        # Using the specific secrets key for your Trial Timeline credentials
+        # Replace 'trial_timeline_db' with whatever name you gave your new TOML section
+        if "trial_timeline_db" in st.secrets:
+            creds_info = st.secrets["trial_timeline_db"]
+        elif "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+            creds_info = st.secrets["connections"]["gsheets"]
+        else:
+            creds_info = st.secrets["gcp_service_account"]
+
         if isinstance(creds_info, dict) and "private_key" in creds_info:
              creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
         
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # 3. Open the sheet
+        # Opening the new Trial Timeline Spreadsheet ID
         spreadsheet = client.open_by_key(TRACKER_FILE_ID)
-        worksheet = spreadsheet.get_worksheet(0) # Targets the first tab
+        worksheet = spreadsheet.get_worksheet(0) 
 
-        # 4. Check if the first cell is empty before writing to avoid overwriting data
+        # Check for existing data
         if not worksheet.acell('A1').value:
             worksheet.insert_row(headers, 1)
-            st.success("✅ Headers created successfully in Google Sheets!")
+            # Optional: Freeze the top row so it stays visible when scrolling
+            worksheet.freeze(rows=1)
+            st.success("✅ 'Trial Timeline' headers created successfully!")
         else:
-            st.warning("⚠️ Sheet already has data in the first row. No headers were added.")
+            st.warning("⚠️ Sheet already contains data. Headers were not overwritten.")
 
     except Exception as e:
-        st.error(f"Failed to create headers: {e}")
+        st.error(f"Failed to initialize Trial Timeline headers: {e}")
 
-# To run this, you could add a button in your Sidebar temporarily:
-if st.sidebar.button("🛠️ Initialize GSHEET Headers"):
+# Trigger button for the sidebar
+if st.sidebar.button("🛠️ Setup Trial Timeline Headers"):
     initialize_google_sheet_headers()
 
 # --- INITIALIZE SESSION STATE ---
