@@ -179,7 +179,7 @@ if st.button("🗑️ Delete from Local & Cloud", type="primary"):
                         st.rerun()
 
                     except Exception as e:
-                        st.error(f"Error during deletion: {e}"
+                        st.error(f"Error during deletion: {e}")
         else:
             st.info("Local database is empty.")
     else:
