@@ -126,8 +126,18 @@ def sync_last_trial_to_cloud(pre_prod_no):
     except Exception as e:
         return False, f"Sync Error: {str(e)}"
 
-# --- 3. SIDEBAR (With Local & Cloud Delete) ---
+# --- 3. SIDEBAR (With Admin Controls & Navigation) ---
 with st.sidebar:
+    st.header("Navigation")
+    # Link to the Project Tracker App
+    st.page_link(
+        "https://projecttracker-kc2ksaezfqxarnv96ugzdk.streamlit.app/", 
+        label="📋 Go to Project Tracker", 
+        icon="🚀"
+    )
+    
+    st.divider()
+    
     st.header("Admin Controls")
     if st.button("♻️ Refresh Cache"):
         st.cache_data.clear()
@@ -183,7 +193,6 @@ with st.sidebar:
             st.info("Local database is empty.")
     else:
         st.info("No submissions found.")
-
 # --- 4. MAIN INTERFACE ---
 st.title("Injection Trial Data Entry")
 search_input = st.text_input("Enter Pre-Prod No. (e.g. 11925):")
