@@ -12,7 +12,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
 # --- CONFIGURATION ---
-MASTER_TRACKER_ID = "1u_TVVSnWNMpN1kUtKtBprr_ybUggTZfsfg06EcU6YOQ"
+MASTER_TRACKER_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
 TRIAL_TIMELINE_ID = "1UtoZnl8vLKmP47UhxdPDzCZABhccWcyEnC-YV5mTW-Y"
 
 # --- DIRECTORY SETUP ---
