@@ -219,12 +219,18 @@ if search_input:
         with st.form("trial_entry_form", clear_on_submit=True):
             st.subheader(f"Current Phase: {current_trial_ref}")
             
-            # Row 1: Basic Admin
-            c1, c2, c3, c4 = st.columns(4)
+            # MOVED TO TOP: Client and Job Description
+            top_c1, top_c2 = st.columns([1, 2])
+            client = top_c1.text_input("Client", value=ld.get('Client', ''))
+            desc = top_c2.text_input("Job Description", value=ld.get('Project Description', ''))
+            
+            st.divider()
+
+            # Row 1: Basic Admin (Client removed from here)
+            c1, c2, c3 = st.columns(3)
             t_date = c1.date_input("Trial Date", datetime.now())
             s_rep = c2.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
-            client = c3.text_input("Client", value=ld.get('Client', ''))
-            operator = c4.text_input("Operator Name")
+            operator = c3.text_input("Operator Name")
 
             # Row 2: Machine/Targets
             c1, c2, c3, c4 = st.columns(4)
@@ -233,13 +239,12 @@ if search_input:
             m_prod = c3.text_input("Prod Machine", value=ld.get('Machine', ''))
             m_trial = c4.text_input("Trial Machine")
 
-            # Row 3: Product Details
+            # Row 3: Product Details (Description removed from here)
             st.markdown("### Product Specifications")
-            c1, c2, c3, c4 = st.columns(4)
-            desc = c1.text_input("Description", value=ld.get('Project Description', ''))
-            p_code = c2.text_input("Product Code", value=ld.get('Product Code', ''))
-            mat = c3.text_input("Material", value=ld.get('Material', ''))
-            supp = c4.text_input("Supplier", value=ld.get('Supplier', ''))
+            c1, c2, c3 = st.columns(3)
+            p_code = c1.text_input("Product Code", value=ld.get('Product Code', ''))
+            mat = c2.text_input("Material", value=ld.get('Material', ''))
+            supp = c3.text_input("Supplier", value=ld.get('Supplier', ''))
 
             c1, c2, c3, c4 = st.columns(4)
             length = c1.text_input("Length", value=str(ld.get('Length', '')))
@@ -287,7 +292,7 @@ if search_input:
 
             # --- SUBMISSION LOGIC ---
             if st.form_submit_button("Submit Trial Entry"):
-                # Construct 39-column data mapping
+                # Data mapping remains consistent with your 39-column requirements
                 full_row = {
                     "Trial Reference": current_trial_ref,
                     "Pre-Prod No.": search_input,
@@ -341,7 +346,6 @@ if search_input:
                 # Sync Cloud
                 try:
                     client_gs = get_gspread_client()
-                    # 1. Update Tracker
                     m_sheet = client_gs.open_by_key(MASTER_TRACKER_ID).get_worksheet(0)
                     m_cell = m_sheet.find(search_input, in_column=1)
                     if m_cell:
@@ -351,7 +355,6 @@ if search_input:
                             val = f"{current_trial_ref.split('_')[-1]} - {datetime.now().strftime('%d/%m/%Y')}"
                             m_sheet.update_cell(m_cell.row, idx, val)
                     
-                    # 2. Append Timeline
                     t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
                     t_sheet.append_row(list(full_row.values()))
                     
