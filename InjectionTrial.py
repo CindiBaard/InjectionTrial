@@ -64,7 +64,7 @@ def create_pdf(data):
     
     # --- 1. Header: Trial Reference ---
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(190, 10, txt=f"Trial Report: {data.get('Trial Reference', 'N/A')}", ln=True, align='C')
+    pdf.cell(190, 10, txt=f"Injection Moulding Trial Request: {data.get('Trial Reference', 'N/A')}", ln=True, align='C')
     pdf.ln(2)
 
     # --- 2. Top Section: Client & Description (Full Width) ---
