@@ -61,15 +61,63 @@ def get_next_trial_reference(pre_prod_no):
 def create_pdf(data):
     pdf = FPDF()
     pdf.add_page()
+    
+    # --- Title ---
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(200, 10, txt=f"Trial Report: {data.get('Trial Reference', 'N/A')}", ln=True, align='C')
-    pdf.ln(5)
-    pdf.set_font("Arial", size=9)
-    for key, value in data.items():
-        pdf.set_font("Arial", "B", 9)
-        pdf.cell(55, 7, txt=f"{key}:", border=0)
-        pdf.set_font("Arial", size=9)
-        pdf.cell(0, 7, txt=f"{str(value)}", border=0, ln=True)
+    pdf.cell(190, 10, txt=f"Trial Report: {data.get('Trial Reference', 'N/A')}", ln=True, align='C')
+    pdf.ln(4)
+    
+    # --- Layout Configuration ---
+    # We use a 2-column approach to save vertical space
+    col_width = 90
+    line_height = 5.5  # Tight line height
+    pdf.set_font("Arial", size=8) # Smaller font for dense data
+    
+    # Separate Observations as they need full width at the bottom
+    obs_text = data.pop("Observations", "")
+    items = list(data.items())
+    
+    # Split items into two halves
+    midpoint = (len(items) + 1) // 2
+    left_col = items[:midpoint]
+    right_col = items[midpoint:]
+    
+    start_y = pdf.get_y()
+    
+    # Render Left Column
+    for key, value in left_col:
+        pdf.set_font("Arial", "B", 8)
+        pdf.cell(35, line_height, txt=f"{key}:", border=0)
+        pdf.set_font("Arial", size=8)
+        # Truncate very long strings to prevent overlapping columns
+        val_str = str(value)[:40] if value else ""
+        pdf.cell(55, line_height, txt=val_str, border=0, ln=True)
+        
+    # Reset Y to the top of the data block for the Right Column
+    end_y_left = pdf.get_y()
+    pdf.set_y(start_y)
+    
+    # Render Right Column
+    for key, value in right_col:
+        pdf.set_x(105) # Shift to middle of page
+        pdf.set_font("Arial", "B", 8)
+        pdf.cell(35, line_height, txt=f"{key}:", border=0)
+        pdf.set_font("Arial", size=8)
+        val_str = str(value)[:40] if value else ""
+        pdf.cell(55, line_height, txt=val_str, border=0, ln=True)
+
+    # --- Observations Section ---
+    # Put observations back in data dict for state consistency if needed elsewhere
+    data["Observations"] = obs_text 
+    
+    # Ensure we start the observations below the longest column
+    pdf.set_y(max(end_y_left, pdf.get_y()) + 5)
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(0, 7, "Observations:", ln=True)
+    pdf.set_font("Arial", size=8)
+    # multi_cell allows text wrapping for long notes
+    pdf.multi_cell(190, 5, txt=str(obs_text))
+
     return pdf.output(dest='S').encode('latin-1')
 
 def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
