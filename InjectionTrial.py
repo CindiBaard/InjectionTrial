@@ -126,15 +126,18 @@ def sync_last_trial_to_cloud(pre_prod_no):
     except Exception as e:
         return False, f"Sync Error: {str(e)}"
 
-# --- 3. SIDEBAR (With Admin Controls & Navigation) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.header("Navigation")
-    # Link to the Project Tracker App
-    st.page_link(
-        "https://projecttracker-kc2ksaezfqxarnv96ugzdk.streamlit.app/", 
-        label="📋 Go to Project Tracker", 
-        icon="🚀"
-    )
+    st.title("Quick Links")
+    # Fixed the missing quotation marks around the labels
+    st.page_link("https://blowmouldtrials-896hkmybnnmb8zmzpggfsv.streamlit.app/", label="Blowmould Trial App", icon="🏺")
+    st.page_link("https://projecttracker-kc2ksaezfqxarnv96ugzdk.streamlit.app/", label="📋 Go to Project Tracker", icon="🚀")
+    st.divider()
+    if st.button("🔄 Rebuild Local DB", use_container_width=True):
+        st.cache_data.clear()
+        if os.path.exists(FILENAME_PARQUET): 
+            os.remove(FILENAME_PARQUET)
+        st.rerun()
     
     st.divider()
     
@@ -217,7 +220,7 @@ if search_input:
 
         # --- THE 39-COLUMN FORM ---
         with st.form("trial_entry_form", clear_on_submit=True):
-            st.subheader(f"Current Phase: {current_trial_ref}")
+            st.subheader(f"Trial Reference: {current_trial_ref}")
             
             # MOVED TO TOP: Client and Job Description
             top_c1, top_c2 = st.columns([1, 2])
