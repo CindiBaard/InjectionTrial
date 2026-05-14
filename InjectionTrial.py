@@ -39,17 +39,36 @@ def get_gspread_client():
     return gspread.authorize(Credentials.from_service_account_info(creds_info, scopes=scope))
 
 # --- 2. DATA HELPERS ---
-def get_project_data(pre_prod_no):
+@st.cache_data
+def load_and_clean_parquet():
+    """Loads the main database and cleans the Pre-Prod No. column."""
     if not os.path.exists(FILENAME_PARQUET):
         return None
     try:
         df = pd.read_parquet(FILENAME_PARQUET)
-        search_id = str(pre_prod_no).strip().split('.')[0]
-        df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        result = df[df['Pre-Prod No.'] == search_id]
-        return result.iloc[0].to_dict() if not result.empty else None
-    except:
+        # Standardize ID column: string, no decimals, no whitespace
+        df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str).str.split('.').str[0].str.strip()
+        return df
+    except Exception as e:
+        st.error(f"Error reading Parquet: {e}")
         return None
+
+def get_project_data(pre_prod_no):
+    df = load_and_clean_parquet()
+    if df is None:
+        # If Rebuild deleted the file, this warning triggers correctly
+        st.warning(f"Database file not found at {FILENAME_PARQUET}. Please ensure it is present in your repository.")
+        return None
+    
+    search_id = str(pre_prod_no).strip().split('.')[0]
+    result = df[df['Pre-Prod No.'] == search_id]
+    
+    if not result.empty:
+        return result.iloc[0].to_dict()
+    else:
+        st.warning(f"ID {search_id} not found in the database.")
+        return None
+
 
 def get_next_trial_reference(pre_prod_no):
     if not os.path.exists(SUBMISSIONS_FILE):
@@ -186,69 +205,51 @@ with st.sidebar:
     st.page_link("https://blowmouldtrials-896hkmybnnmb8zmzpggfsv.streamlit.app/", label="Blowmould Trial App", icon="🏺")
     st.page_link("https://projecttracker-kc2ksaezfqxarnv96ugzdk.streamlit.app/", label="📋 Go to Project Tracker", icon="🚀")
     st.divider()
+
+    # REBUILD LOGIC: Clears cache so load_and_clean_parquet runs fresh
     if st.button("🔄 Rebuild Local DB", use_container_width=True):
         st.cache_data.clear()
-        if os.path.exists(FILENAME_PARQUET): 
-            os.remove(FILENAME_PARQUET)
+        # Note: If the file is tracked by Git, os.remove might not be necessary 
+        # unless you are generating the file dynamically. 
+        # For a GitHub-hosted file, st.cache_data.clear() is usually enough.
+        st.success("Cache Rebuilt!")
+        time.sleep(1)
         st.rerun()
-    
-    st.divider()
     
     st.header("Admin Controls")
     if st.button("♻️ Refresh Cache"):
         st.cache_data.clear()
         st.success("Cache Cleared")
     
-    st.divider()
     st.subheader("Manage Trials")
-    
     if os.path.exists(SUBMISSIONS_FILE):
         hist_df = pd.read_parquet(SUBMISSIONS_FILE)
-        
         if not hist_df.empty:
-            # Create labels for the dropdown
             trial_labels = hist_df.apply(lambda x: f"{x['Trial Reference']} ({x['Date']})", axis=1).tolist()
             selected_label = st.selectbox("Select Trial to Remove", options=trial_labels)
             selected_ref = str(selected_label).split(" (")[0]
             
             if st.button("🗑️ Delete from Local & Cloud", type="primary"):
-                with st.spinner(f"Removing {selected_ref}..."):
-                    try:
-                        # 1. DELETE FROM GOOGLE SHEETS (Trial Timeline)
-                        client_gs = get_gspread_client()
-                        t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
-                        
-                        # Find the cell containing the unique Trial Reference
-                        cell = t_sheet.find(selected_ref)
-                        
-                        if cell:
-                            t_sheet.delete_rows(cell.row)
-                            st.toast(f"Cloud row {cell.row} removed.")
-                        else:
-                            st.warning("Trial Reference not found in Google Sheets.")
-
-                        # 2. DELETE FROM LOCAL PARQUET
-                        updated_df = hist_df[hist_df['Trial Reference'] != selected_ref]
-                        updated_df.to_parquet(SUBMISSIONS_FILE, index=False)
-                        
-                        # 3. TRIGGER MASTER SYNC
-                        pre_id = selected_ref.split('_')[0]
-                        success, msg = sync_last_trial_to_cloud(pre_id)
-                        
-                        if success:
-                            st.success(f"Deleted {selected_ref}. Master updated: {msg}")
-                        else:
-                            st.warning(f"Deleted locally, but Master Sync failed: {msg}")
-
-                        time.sleep(1)
-                        st.rerun()
-
-                    except Exception as e:
-                        st.error(f"Error during deletion: {e}")
+                try:
+                    client_gs = get_gspread_client()
+                    t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
+                    cell = t_sheet.find(selected_ref)
+                    if cell:
+                        t_sheet.delete_rows(cell.row)
+                    
+                    updated_df = hist_df[hist_df['Trial Reference'] != selected_ref]
+                    updated_df.to_parquet(SUBMISSIONS_FILE, index=False)
+                    
+                    pre_id = selected_ref.split('_')[0]
+                    sync_last_trial_to_cloud(pre_id)
+                    st.success(f"Deleted {selected_ref}")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Deletion failed: {e}")
         else:
-            st.info("Local database is empty.")
-    else:
-        st.info("No submissions found.")
+            st.info("No submissions found.")
+
 # --- 4. MAIN INTERFACE ---
 st.title("Injection Trial Data Entry")
 search_input = st.text_input("Enter Pre-Prod No. (e.g. 11925):")
@@ -391,31 +392,36 @@ if search_input:
                     "Observations": obs
                 }
 
-                # Save Local Parquet
-                df_new = pd.DataFrame([full_row]).astype(str)
+                # 2. Save Locally First (Parquet)
+                df_new = pd.DataFrame([full_row])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_hist = pd.read_parquet(SUBMISSIONS_FILE)
                     pd.concat([df_hist, df_new], ignore_index=True).to_parquet(SUBMISSIONS_FILE, index=False)
                 else:
                     df_new.to_parquet(SUBMISSIONS_FILE, index=False)
 
-                # Sync Cloud
+                # 3. Save to Cloud
                 try:
-                    client_gs = get_gspread_client()
-                    m_sheet = client_gs.open_by_key(MASTER_TRACKER_ID).get_worksheet(0)
-                    m_cell = m_sheet.find(search_input, in_column=1)
-                    if m_cell:
-                        headers = [h.strip() for h in m_sheet.row_values(1)]
-                        if "Injection trial requested" in headers:
-                            idx = headers.index("Injection trial requested") + 1
-                            val = f"{current_trial_ref.split('_')[-1]} - {datetime.now().strftime('%d/%m/%Y')}"
-                            m_sheet.update_cell(m_cell.row, idx, val)
+                    with st.spinner("Uploading to Google Sheets..."):
+                        client_gs = get_gspread_client()
+                        
+                        # Update Task 1: Master Project Tracker (Success/Date)
+                        update_tracker_status(search_input, current_trial_ref)
+                        
+                        # Update Task 2: Blowmould Timeline Spreadsheet
+                        # We verify the sheet exists before appending
+                        ts_spreadsheet = client_gs.open_by_key(TRIAL_TIMELINE_ID)
+                        t_sheet = ts_spreadsheet.get_worksheet(0) # Grabs the first tab
+                        
+                        # Convert dict values to a flat list for append_row
+                        row_to_append = list(full_row.values())
+                        t_sheet.append_row(row_to_append)
                     
-                    t_sheet = client_gs.open_by_key(TRIAL_TIMELINE_ID).get_worksheet(0)
-                    t_sheet.append_row(list(full_row.values()))
-                    
+                    # 4. Success State & Rerun
                     st.session_state.last_submission = full_row
                     st.session_state.submitted = True
                     st.rerun()
+                    
                 except Exception as e:
-                    st.error(f"Cloud Sync failed: {e}")
+                    st.error(f"Cloud Sync failed: {str(e)}")
+                    # We don't rerun here so the user can see the error
